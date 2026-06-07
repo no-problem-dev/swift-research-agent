@@ -1,0 +1,69 @@
+{
+  "originHash" : "b626b594407260808861bfb20789c93c959535e292370c133ffd299f0caccea8",
+  "pins" : [
+    {
+      "identity" : "swift-a2a",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/no-problem-dev/swift-a2a.git",
+      "state" : {
+        "revision" : "c9675f1d165cedbb35fe82d290be56592125cf55",
+        "version" : "0.5.0"
+      }
+    },
+    {
+      "identity" : "swift-agent-runtime",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/no-problem-dev/swift-agent-runtime.git",
+      "state" : {
+        "revision" : "e139a2f7fa35b0eef71e8a4ae9260816dc213dc2",
+        "version" : "0.2.5"
+      }
+    },
+    {
+      "identity" : "swift-http-transport",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/no-problem-dev/swift-http-transport.git",
+      "state" : {
+        "revision" : "aa837e2278cd264ca95cf38da2e62ef177a9381a",
+        "version" : "1.1.0"
+      }
+    },
+    {
+      "identity" : "swift-llm-client",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/no-problem-dev/swift-llm-client.git",
+      "state" : {
+        "revision" : "ab28c667e738121a55319a2a0703c79adb59f19f",
+        "version" : "3.4.1"
+      }
+    },
+    {
+      "identity" : "swift-structured-data",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/no-problem-dev/swift-structured-data.git",
+      "state" : {
+        "revision" : "0b0580351e5b944f99f8beff3ad5b6eed84f052d",
+        "version" : "1.3.0"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "4799286537280063c85a32f09884cfbca301b1a1",
+        "version" : "602.0.0"
+      }
+    },
+    {
+      "identity" : "swiftsoup",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/scinfu/SwiftSoup.git",
+      "state" : {
+        "revision" : "49dcadd93161f4a44b4994d3a3e8de9f085aface",
+        "version" : "2.13.5"
+      }
+    }
+  ],
+  "version" : 3
+}
