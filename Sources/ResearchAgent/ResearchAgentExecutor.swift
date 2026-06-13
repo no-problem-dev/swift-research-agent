@@ -3,6 +3,7 @@ import AgentRuntime
 import Foundation
 import LLMClient
 import LLMTool
+import LLMAgentStep
 import ResearchStore
 
 /// researcher ワーカーの AgentExecutor。
@@ -70,6 +71,11 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
         let updater = TaskUpdater(eventQueue: eventQueue, taskId: context.taskId, contextId: context.contextId)
         try await updater.startWork()
 
+        // usage（metrics）と systemPrompt（debug）は意味論イベントと別の telemetry 側帯で受ける。
+        // 是正リトライを跨いで集計するため状態は actor に集約する。
+        let telemetryState = ResearchTelemetryState()
+        let onSystemPrompt = self.onSystemPrompt
+        let onUsage = self.onUsage
         let loop = AgentLoop(
             client: client,
             model: model,
@@ -77,17 +83,26 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
             systemPrompt: systemPrompt,
             maxSteps: maxSteps,
             maxTokens: maxTokens,
-            cachePolicy: cachePolicy
+            cachePolicy: cachePolicy,
+            telemetry: { telemetry in
+                switch telemetry {
+                case .usage(let usage, let model):
+                    let calls = await telemetryState.addUsage(usage)
+                    await onUsage?(calls, usage, model)
+                case .systemPrompt(let rendered):
+                    // 是正リトライでも内容は不変なので 1 回だけ流す
+                    if await telemetryState.shouldEmitSystemPrompt() { await onSystemPrompt?(rendered) }
+                case .validationFailed:
+                    break
+                }
+            }
         )
 
         let contextId = context.contextId.rawValue
         let userInput = context.getUserInput()
         let priorHistory = await history.history(for: contextId)
         var messages = priorHistory + [.user(userInput)]
-        var totalUsage: TokenUsage?
-        var llmCalls = 0
         var attempt = 0
-        var emittedSystemPrompt = false
 
         do {
             while true {
@@ -103,22 +118,10 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                     case .toolResult:
                         // ソースの記帳はツール自身が SourceRegistry へ行う（傍受不要）
                         break
-                    case .systemPrompt(let rendered):
-                        // 是正リトライでも内容は不変なので 1 回だけ流す
-                        if !emittedSystemPrompt {
-                            emittedSystemPrompt = true
-                            await onSystemPrompt?(rendered)
-                        }
-                    case .usage(let usage, let model):
-                        llmCalls += 1
-                        totalUsage = totalUsage?.adding(usage) ?? usage
-                        await onUsage?(llmCalls, usage, model)
                     case .inputRequired(let question):
                         try await updater.requiresInput(message: updater.newAgentMessage([.text(question)]))
                     case .completed(let text):
                         finalText = text
-                    case .validationFailed:
-                        break
                     }
                 }
 
@@ -132,7 +135,7 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                     // URL は次タスクでも引用可能なまま — ゲートの検証は壊れない。
                     await history.save(priorHistory + [.user(userInput), .assistant(finalText)], for: contextId)
                     await updater.addArtifact(
-                        [.text(finalText)], name: "response", metadata: await artifactMetadata(finalText: finalText, usage: totalUsage)
+                        [.text(finalText)], name: "response", metadata: await artifactMetadata(finalText: finalText, usage: await telemetryState.total)
                     )
                     try await updater.complete()
                     return
@@ -175,5 +178,27 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
             metadata[Self.referencesMetadataKey] = .string(json)
         }
         return metadata.isEmpty ? nil : metadata
+    }
+}
+
+/// telemetry sink（@Sendable）越しに usage 集計・LLM 呼び出し数・systemPrompt の一度きり発火を
+/// 是正リトライを跨いで保持するスレッドセーフな状態。
+private actor ResearchTelemetryState {
+    private(set) var total: TokenUsage?
+    private var calls = 0
+    private var emittedSystemPrompt = false
+
+    /// usage を加算し、累計の LLM 呼び出し回数を返す。
+    func addUsage(_ usage: TokenUsage) -> Int {
+        total = total?.adding(usage) ?? usage
+        calls += 1
+        return calls
+    }
+
+    /// systemPrompt をまだ流していなければ true を返し、以後は false（一度きり）。
+    func shouldEmitSystemPrompt() -> Bool {
+        if emittedSystemPrompt { return false }
+        emittedSystemPrompt = true
+        return true
     }
 }

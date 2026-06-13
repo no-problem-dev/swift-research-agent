@@ -123,8 +123,25 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
     // MARK: - ToolKit Protocol
 
     public var tools: [any Tool] {
+        tools(enabled: ResearchToolID.allTools)
+    }
+
+    /// 構成済みプロバイダから提供可能なツール ID（`tools(enabled:)` の上限）。
+    /// ホスト UI はこれで「キー未設定で使えないツール」を判別できる。
+    public var availableToolIDs: Set<ResearchToolID> {
+        var ids = ResearchToolID.coreTools
+        if searchProvider != nil { ids.insert(.webSearch) }
+        return ids
+    }
+
+    /// enabled で選別したツール一式。コアツール（fetch）は常に含まれ、
+    /// プロバイダ未構成のツールは enabled に含めても落ちる。
+    /// fetch の説明・エラー文はツール構成に依存しない表現で書かれている
+    /// （web_search の有無どちらでも正しい誘導になる）。
+    public func tools(enabled: Set<ResearchToolID>) -> [any Tool] {
+        let effective = availableToolIDs.intersection(enabled.union(ResearchToolID.coreTools))
         var tools: [any Tool] = []
-        if searchProvider != nil {
+        if effective.contains(.webSearch) {
             tools.append(webSearchTool)
         }
         tools.append(fetchTool)
@@ -414,28 +431,28 @@ public enum ResearchToolError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidURL(let url):
-            return "Invalid URL: \(url). Use web_search to find valid URLs instead of guessing."
+            return "Invalid URL: \(url). Use URLs observed this session (search results or links in fetched pages) instead of guessing."
         case .unsupportedScheme(let scheme):
             return "Unsupported URL scheme: \(scheme). Only http and https are supported."
         case .domainNotAllowed(let domain, let allowed):
             return "Domain '\(domain)' is not allowed. Allowed domains: \(allowed.joined(separator: ", ")). Try a different source."
         case .invalidResponse:
-            return "Invalid server response. Try a different URL or use web_search to find alternatives."
+            return "Invalid server response. Try a different URL observed this session."
         case .httpError(let statusCode):
             switch statusCode {
             case 401, 403:
                 return "Access blocked (HTTP \(statusCode)). Try a different source."
             case 404:
-                return "Page not found (HTTP 404). Use web_search to find valid URLs instead of guessing."
+                return "Page not found (HTTP 404). Use URLs observed this session instead of guessing."
             case 429:
                 return "Rate limited (HTTP 429). Wait before retrying, or try a different source."
             case 500...599:
                 return "Server error (HTTP \(statusCode)). The server may be temporarily unavailable. Try again later or use a different source."
             default:
-                return "HTTP error \(statusCode). Try a different URL or use web_search to find alternatives."
+                return "HTTP error \(statusCode). Try a different URL observed this session."
             }
         case .contentTooLarge(let size, let maxSize):
-            return "Content too large: \(size) bytes (max: \(maxSize) bytes). This is a binary file (PDF, image, etc.) that cannot be processed as text. Use web_search to find an HTML version instead."
+            return "Content too large: \(size) bytes (max: \(maxSize) bytes). This is a binary file (PDF, image, etc.) that cannot be processed as text. Look for an HTML version instead."
         case .encodingError:
             return "Cannot decode the response encoding. Try a different source."
         }

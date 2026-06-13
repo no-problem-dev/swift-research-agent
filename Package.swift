@@ -11,9 +11,9 @@ let package = Package(
     ],
     dependencies: [
         // Tool プロトコル・JSONSchema・SystemPrompt（プロバイダー非依存の契約層）
-        .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "3.4.1"),
+        .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "3.5.1"),
         // AgentExecutor / AgentLoop / TaskUpdater（A2A ワーカーの実行環境）
-        .package(url: "https://github.com/no-problem-dev/swift-agent-runtime.git", from: "0.2.5"),
+        .package(url: "https://github.com/no-problem-dev/swift-agent-runtime.git", from: "0.8.0"),
         // HTTP トランスポート抽象（テスト時に差し替え可能）
         .package(url: "https://github.com/no-problem-dev/swift-http-transport.git", from: "1.1.0"),
         // HTML 本文抽出
@@ -46,6 +46,7 @@ let package = Package(
                 .product(name: "AgentRuntime", package: "swift-agent-runtime"),
                 .product(name: "LLMClient", package: "swift-llm-client"),
                 .product(name: "LLMTool", package: "swift-llm-client"),
+                .product(name: "LLMAgentStep", package: "swift-llm-client"),
             ]
         ),
         .testTarget(
