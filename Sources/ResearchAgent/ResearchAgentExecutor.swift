@@ -113,7 +113,7 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                         if !text.isEmpty {
                             try await updater.updateStatus(.working, message: updater.newAgentMessage([.text(text)]))
                         }
-                    case .toolCall(_, let name):
+                    case .toolCall(_, let name, _):
                         try await updater.updateStatus(.working, message: updater.newAgentMessage([.text("🔧 \(name)")]))
                     case .toolResult:
                         // ソースの記帳はツール自身が SourceRegistry へ行う（傍受不要）
