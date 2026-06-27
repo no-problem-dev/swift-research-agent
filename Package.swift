@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "ResearchAgent", targets: ["ResearchAgent"]),
     ],
     dependencies: [
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
         // Tool プロトコル・JSONSchema・SystemPrompt（プロバイダー非依存の契約層）
         .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "3.5.1"),
         // AgentExecutor / AgentLoop / TaskUpdater（A2A ワーカーの実行環境）
