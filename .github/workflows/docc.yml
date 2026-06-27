@@ -33,7 +33,8 @@ jobs:
         run: |
           swift package --allow-writing-to-directory ./docs \
             generate-documentation \
-            --target ResearchStore \
+            --enable-experimental-combined-documentation \
+            --target ResearchStore --target ResearchAgentTools --target ResearchAgent \
             --disable-indexing \
             --transform-for-static-hosting \
             --hosting-base-path swift-research-agent \
