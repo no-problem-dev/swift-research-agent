@@ -6,10 +6,9 @@ import FoundationNetworking
 
 // MARK: - SerperSearchProvider
 
-/// Serper (Google SERP) REST APIを使用した検索プロバイダー
+/// Serper（Google SERP）REST API を使用した検索プロバイダー。
 ///
-/// Serper APIキーが必要です。
-/// https://serper.dev/ から取得できます。
+/// Serper APIキーが必要（https://serper.dev/ から取得）。
 ///
 /// ## 使用例
 ///
@@ -59,6 +58,13 @@ public final class SerperSearchProvider: WebSearchProvider, @unchecked Sendable 
 
     // MARK: - WebSearchProvider
 
+    /// Serper API（Google SERP）で検索を実行する。
+    ///
+    /// - Parameters:
+    ///   - query: 検索クエリ
+    ///   - maxResults: 最大結果数（最大 100）
+    /// - Returns: 検索結果の配列
+    /// - Throws: `WebSearchError`
     public func search(query: String, maxResults: Int) async throws -> [WebSearchResult] {
         guard let url = URL(string: "https://google.serper.dev/search") else {
             throw WebSearchError.invalidResponse

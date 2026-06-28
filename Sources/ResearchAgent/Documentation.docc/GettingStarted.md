@@ -1,16 +1,16 @@
-# Getting Started with ResearchAgent
+# ResearchAgent 入門
 
 出典検証ゲート付きリサーチエージェントを組み立て、検索→フェッチ→引用検証のループを実行する。
 
-## Installation
+## インストール
 
-`Package.swift` に依存を追加します。
+`Package.swift` に依存を追加する。
 
 ```swift
 .package(url: "https://github.com/no-problem-dev/swift-research-agent.git", from: "0.1.1")
 ```
 
-使用するターゲットに必要なライブラリを指定します。
+使用するターゲットに必要なライブラリを指定する。
 
 ```swift
 .target(
@@ -23,11 +23,11 @@
 )
 ```
 
-## Basic Usage: 出典検証付きリサーチの組み立て
+## 基本的な使い方: 出典検証付きリサーチの組み立て
 
 ### 1. SourceRegistry を作成する
 
-`SourceRegistry` はセッションスコープの台帳です。`ResearchToolKit`（ツール側）と `ResearchAgentExecutor`（検証側）の両方に同じインスタンスを渡すことで、ツールが記帳したソースをゲートが照合できます。
+`SourceRegistry` はセッションスコープの台帳だ。`ResearchToolKit`（ツール側）と `ResearchAgentExecutor`（検証側）の両方に同じインスタンスを渡すことで、ツールが記帳したソースをゲートが照合できる。
 
 ```swift
 import ResearchStore
@@ -39,7 +39,7 @@ let registry = SourceRegistry()
 
 ### 2. ResearchToolKit を構成する
 
-Serper（Google SERP）を使う場合は `ResearchToolKit.serper` ファクトリを使います。`gl`/`hl` で地域・言語を指定できます。
+Serper（Google SERP）を使う場合は `ResearchToolKit.serper` ファクトリを使う。`gl`/`hl` で地域・言語を指定できる。
 
 ```swift
 let toolKit = ResearchToolKit.serper(
@@ -50,7 +50,7 @@ let toolKit = ResearchToolKit.serper(
 )
 ```
 
-Brave Search を使う場合は `BraveSearchProvider` を直接渡します。
+Brave Search を使う場合は `BraveSearchProvider` を直接渡す。
 
 ```swift
 let toolKit = ResearchToolKit(
@@ -61,40 +61,41 @@ let toolKit = ResearchToolKit(
 
 ### 3. ResearchAgentExecutor を組み立てる
 
-`ResearcherAgent.systemPrompt()` は有効ツール構成に合わせてプロンプトを生成します。`web_search` を無効にする場合は `tools: [.fetch]` を渡します。
+`ResearcherAgent.systemPrompt()` は有効ツール構成に合わせてプロンプトを生成する。`web_search` を無効にする場合は `tools: [.fetch]` を渡す。
 
 ```swift
-import AgentRuntime // AgentCapableClient, InMemoryAgentHistory
+import AgentRuntime   // InMemoryAgentHistory
+import LLMClient      // PromptCachePolicy
 
 let executor = ResearchAgentExecutor(
     client: anthropicClient,          // AgentCapableClient を実装したクライアント
     model: .claude_opus_4_5,
-    tools: ToolSet { toolKit },
+    tools: ToolSet { toolKit.tools(enabled: ResearchToolID.allTools) },
     systemPrompt: ResearcherAgent.systemPrompt(),
     maxSteps: 16,
     registry: registry,
     maxRetries: 2,                    // 出典検証 NG 時の是正リトライ上限
-    cachePolicy: .none,
+    cachePolicy: .implicit,
     history: InMemoryAgentHistory()
 )
 ```
 
 ### 4. タスクを実行する
 
-`AgentExecutor` として `AgentRuntime` に登録し、タスクリクエストを送信します。合格した回答のアーティファクトには `ResearchAgentExecutor.referencesMetadataKey`（`"research.references"`）キーで引用出典の `[SourceRecord]` JSON が付きます。
+`AgentExecutor` として `AgentRuntime` に登録し、タスクリクエストを送信する。合格した回答のアーティファクトには `ResearchAgentExecutor.referencesMetadataKey`（`"research.references"`）キーで引用出典の `[SourceRecord]` JSON が付く。
 
 ```swift
 // ResearchAgentExecutor は AgentExecutor を実装しているため、
-// AgentRuntime が提供する実行基盤にそのまま登録できます。
+// AgentRuntime が提供する実行基盤にそのまま登録できる。
 let runtime = AgentRuntime(executor: executor, card: ResearcherAgent.card())
 ```
 
 ### 出典検証の仕組み
 
-`ResearchCitationGate` はネットワークも LLM も使わず、`SourceRegistry` との照合だけで検証します。
+`ResearchCitationGate` はネットワークも LLM も使わず、`SourceRegistry` との照合だけで検証する。
 
 - 引用 URL が台帳に存在しない → 捏造 URL として違反
 - 引用 URL が `fetched == false`（検索スニペットのみ）→ フェッチ未実施として違反
 - 違反がある場合は是正メッセージを会話に積んで再ループ（`maxRetries` 回まで）
 
-この設計により、LLM は必ず `web_search → fetch` の順でソースを確認してから引用するよう誘導されます。
+この設計により、LLM は必ず `web_search → fetch` の順でソースを確認してから引用するよう誘導される。

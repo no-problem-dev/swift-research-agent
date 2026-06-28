@@ -4,11 +4,11 @@
 
 ## Overview
 
-`ResearchAgentTools` はパッケージの Layer 1 です。Web 調査ツール群（`web_search` / `fetch`）を LLM ツールとして組み立て、取得結果を `SourceRegistry`（`ResearchStore` モジュール）へ記帳するまでを担います。引用の検証はゲート側（`ResearchAgent` モジュール）が行い、このモジュールは素材の提供と記帳に責務を限定します。
+`ResearchAgentTools` はパッケージの Layer 1 だ。Web 調査ツール群（`web_search` / `fetch`）を LLM ツールとして組み立て、取得結果を `SourceRegistry`（`ResearchStore` モジュール）へ記帳するまでを担う。引用の検証はゲート側（`ResearchAgent` モジュール）が行い、このモジュールは素材の提供と記帳に責務を限定する。
 
 ### ResearchToolKit の使い方
 
-`ResearchToolKit` は `SourceRegistry` と検索プロバイダーを受け取って `web_search` / `fetch` ツールを提供します。Serper（Google SERP）を使う場合は便利なファクトリメソッドを使います。
+`ResearchToolKit` は `SourceRegistry` と検索プロバイダーを受け取って `web_search` / `fetch` ツールを提供する。Serper（Google SERP）を使う場合は便利なファクトリメソッドを使う。
 
 ```swift
 import ResearchStore
@@ -25,7 +25,7 @@ let toolKit = ResearchToolKit.serper(
 )
 ```
 
-Brave Search や独自プロバイダーを使う場合はイニシャライザに直接渡します。
+Brave Search や独自プロバイダーを使う場合はイニシャライザに直接渡す。
 
 ```swift
 let toolKit = ResearchToolKit(
@@ -36,9 +36,9 @@ let toolKit = ResearchToolKit(
 
 ### ツール ID による選択的有効化
 
-`ResearchToolID` でツールの有効・無効を制御できます。
-`fetch` は `isCore == true` のため常に含まれます（無効化不可）。
-`web_search` はプロバイダー未設定の場合 `enabled` に指定しても提供されません。
+`ResearchToolID` でツールの有効・無効を制御できる。
+`fetch` は `isCore == true` のため常に含まれる（無効化不可）。
+`web_search` はプロバイダー未設定の場合 `enabled` に指定しても提供されない。
 
 ```swift
 // fetch のみ（search プロバイダー不要の構成）
@@ -50,9 +50,9 @@ let allTools = toolKit.tools(enabled: ResearchToolID.allTools)
 
 ### 検索プロバイダーの階層
 
-`WebSearchProvider` プロトコルを実装することで独自バックエンドを差し込めます。
+`WebSearchProvider` プロトコルを実装することで独自バックエンドを差し込める。
 `ResilientSearchProvider` でラップすることで、キャッシュ・レートリミット・
-サーキットブレーカー・リトライを一括で付与できます。
+サーキットブレーカー・リトライを一括で付与できる。
 
 ```swift
 let brave = BraveSearchProvider(apiKey: "BRAVE_KEY")
@@ -79,7 +79,7 @@ let toolKit = ResearchToolKit(registry: registry, searchProvider: resilient)
 
 ## Topics
 
-### ToolKit
+### ツールキット
 
 - ``ResearchToolKit``
 - ``ResearchToolID``

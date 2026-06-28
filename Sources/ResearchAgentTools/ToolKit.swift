@@ -4,23 +4,10 @@ import LLMTool
 
 // MARK: - ToolKit Protocol
 
-/// 関連するツールをグループ化するプロトコル
+/// 関連するツールをグループ化するプロトコル。
 ///
-/// ToolKitは複数の関連ツールを束ねて提供します。
-/// 公式MCPサーバー（Memory、Filesystem等）と同等の機能を
-/// Swift内で直接実装するために使用します。
-///
-/// ## 使用例
-///
-/// ```swift
-/// let tools = ToolSet {
-///     // 外部MCPサーバー
-///     MCPServer(command: "npx", arguments: ["-y", "@anthropic/mcp-server-brave"])
-///
-///     // 内蔵ToolKit
-///     FileSystemToolKit(allowedPaths: ["/tmp"])
-/// }
-/// ```
+/// ToolKit は複数の関連ツールを束ねて提供する。
+/// 外部 MCP サーバーと同等の機能を Swift 内で直接実装する際に使う。
 ///
 /// ## 実装例
 ///
@@ -34,14 +21,14 @@ import LLMTool
 /// }
 /// ```
 public protocol ToolKit: Sendable {
-    /// ToolKitの識別名
+    /// ToolKit の識別名。
     ///
-    /// ログやデバッグ時の識別に使用されます。
+    /// ログやデバッグ時の識別に使う。
     var name: String { get }
 
-    /// このToolKitが提供するツールの配列
+    /// この ToolKit が提供するツールの配列。
     ///
-    /// ToolSetに追加される際、この配列のすべてのツールが含まれます。
+    /// ToolSet に追加される際、この配列のすべてのツールが含まれる。
     var tools: [any Tool] { get }
 }
 
@@ -69,23 +56,26 @@ extension ToolKit {
 
 // MARK: - BuiltInTool
 
-/// 内蔵ToolKit用のツール
+/// ToolKit 内で使う個別ツールの実装型。
 ///
-/// ToolKitが提供する各ツールの共通機能を提供します。
-/// アノテーション情報を保持し、MCPToolCapabilitiesへの変換をサポートします。
+/// name・description・inputSchema・annotations を保持し、クロージャで execute を実装する。
 public struct BuiltInTool: Tool, Sendable {
     // MARK: - Properties
 
+    /// ツール識別名。LLM へ渡す `name` フィールドに使われる。
     public let toolName: String
+    /// ツールの説明。LLM がツール選択時に参照する。
     public let toolDescription: String
+    /// 入力引数の JSON スキーマ。LLM が引数を生成する際の型定義。
     public let inputSchema: JSONSchema
+    /// ツールのメタ情報（冪等性・副作用など）。`ToolAnnotations()` で全デフォルト。
     public let annotations: ToolAnnotations
 
     private let executeHandler: @Sendable (Data) async throws -> ToolResult
 
     // MARK: - Initialization
 
-    /// BuiltInToolを作成
+    /// BuiltInTool を作成する。
     ///
     /// - Parameters:
     ///   - name: ツール名
@@ -109,6 +99,11 @@ public struct BuiltInTool: Tool, Sendable {
 
     // MARK: - Tool Protocol
 
+    /// ツールを実行する。
+    ///
+    /// - Parameter argumentsData: LLM から渡された引数の JSON データ。
+    /// - Returns: ツールの実行結果。
+    /// - Throws: ハンドラーが投げるエラーをそのまま伝播する。
     public func execute(with argumentsData: Data) async throws -> ToolResult {
         try await executeHandler(argumentsData)
     }

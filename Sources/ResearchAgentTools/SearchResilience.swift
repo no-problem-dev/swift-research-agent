@@ -35,6 +35,15 @@ public struct SearchResilienceConfiguration: Sendable {
         maxRetries: 1
     )
 
+    /// SearchResilienceConfiguration を作成する。
+    ///
+    /// - Parameters:
+    ///   - maxRequestsPerSecond: 1 秒あたりの最大リクエスト数（デフォルト: 1.0）。
+    ///   - failureThreshold: サーキットブレーカーが開く連続失敗回数（デフォルト: 5）。
+    ///   - resetTimeout: サーキットブレーカーのリセット待機時間・秒（デフォルト: 60）。
+    ///   - cacheTTL: キャッシュエントリの生存時間・秒（デフォルト: 300）。
+    ///   - maxCacheEntries: キャッシュの最大エントリ数（デフォルト: 100）。
+    ///   - maxRetries: リクエスト失敗時のリトライ回数（デフォルト: 1）。
     public init(
         maxRequestsPerSecond: Double = 1.0,
         failureThreshold: Int = 5,
@@ -61,7 +70,7 @@ public actor RateLimiter {
     private var tokens: Double
     private var lastRefill: ContinuousClock.Instant
 
-    /// RateLimiterを作成
+    /// RateLimiter を作成する。
     ///
     /// - Parameter maxRequestsPerSecond: 1秒あたりの最大リクエスト数
     public init(maxRequestsPerSecond: Double) {
@@ -71,9 +80,9 @@ public actor RateLimiter {
         self.lastRefill = .now
     }
 
-    /// リクエスト許可を待機
+    /// リクエスト許可を取得する。
     ///
-    /// トークンが利用可能になるまで待機し、1トークンを消費します。
+    /// トークンが利用可能になるまで待機し、1 トークンを消費する。
     public func acquire() async {
         refillTokens()
 
@@ -264,9 +273,9 @@ public actor SearchResultCache {
 
 // MARK: - ResilientSearchProvider
 
-/// レジリエンス機能を統合した検索プロバイダーラッパー
+/// レジリエンス機能を統合した検索プロバイダーラッパー。
 ///
-/// キャッシュ → レート制限 → サーキットブレーカー → リトライの順で実行します。
+/// キャッシュ → レート制限 → サーキットブレーカー → リトライの順で実行する。
 public final class ResilientSearchProvider: WebSearchProvider, Sendable {
     private let provider: any WebSearchProvider
     private let rateLimiter: RateLimiter
@@ -290,6 +299,13 @@ public final class ResilientSearchProvider: WebSearchProvider, Sendable {
         self.maxRetries = configuration.maxRetries
     }
 
+    /// キャッシュ → レート制限 → サーキットブレーカー → リトライの順で検索を実行する。
+    ///
+    /// - Parameters:
+    ///   - query: 検索クエリ
+    ///   - maxResults: 最大結果数
+    /// - Returns: 検索結果の配列（キャッシュヒット時はキャッシュから返す）
+    /// - Throws: `WebSearchError.circuitBreakerOpen`（open 状態の場合）またはプロバイダーのエラー
     public func search(query: String, maxResults: Int) async throws -> [WebSearchResult] {
         // 1. Check cache
         if let cached = await cache.get(query: query, maxResults: maxResults) {

@@ -4,19 +4,19 @@
 
 ## Overview
 
-`ResearchStore` はパッケージの最下位レイヤーです。UI・LLM・ネットワークに依存せず、
-タスク中に観測した URL・タイトル・取得済み本文の SSOT（Single Source of Truth）を提供します。
+`ResearchStore` はパッケージの最下位レイヤーだ。UI・LLM・ネットワークに依存せず、
+タスク中に観測した URL・タイトル・取得済み本文の SSOT（Single Source of Truth）を提供する。
 
 このモジュールだけをインポートすることで、ツール層（`ResearchAgentTools`）や
-エージェント層（`ResearchAgent`）と分離して `SourceRegistry` を扱えます。
+エージェント層（`ResearchAgent`）と分離して `SourceRegistry` を扱える。
 テスト時にモックを差し込む場合や、SPM マルチモジュール構成で依存グラフを
-最小化したい場合に有効です。
+最小化したい場合に有効だ。
 
 ### SourceRegistry の役割
 
-`SourceRegistry` は Swift `actor` として実装されたセッションスコープの台帳です。
+`SourceRegistry` は Swift `actor` として実装されたセッションスコープの台帳だ。
 `ResearchToolKit`（ツール側）と `ResearchAgentExecutor`（検証側）の両方に
-同じインスタンスを渡すことで、ツールが記帳した観測ソースをゲートが照合できます。
+同じインスタンスを渡すことで、ツールが記帳した観測ソースをゲートが照合できる。
 
 ```swift
 import ResearchStore
@@ -49,9 +49,9 @@ print(record?.fetched)  // Optional(true)
 
 `URLNormalization.normalize(_:)` は URL の表記ゆれ（トラッキングパラメータ・
 フラグメント・`www.` プレフィックス・末尾スラッシュ等）を畳み込んで
-台帳キーの一意性を保証します。
+台帳キーの一意性を保証する。
 `SourceRegistry` はすべての記帳・照会をこの正規化経由で行うため、
-LLM が微妙に異なる表記で URL を引用しても偽陰性が起きません。
+LLM が微妙に異なる表記で URL を引用しても偽陰性が起きない。
 
 ```swift
 import ResearchStore

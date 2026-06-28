@@ -60,15 +60,15 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
 
     // MARK: - Initialization
 
-    /// ResearchToolKitを作成
+    /// `ResearchToolKit` を作成する。
     ///
     /// - Parameters:
     ///   - registry: 観測ソースの台帳（ゲートと共有するセッションスコープの actor）
     ///   - searchProvider: 検索プロバイダー（nil で web_search を提供しない）
-    ///   - allowedDomains: 許可するドメインの配列（nilの場合は全て許可）
+    ///   - allowedDomains: 許可するドメインの配列（nil の場合は全て許可）
     ///   - timeout: リクエストのタイムアウト秒数（デフォルト: 30）
-    ///   - maxContentSize: 最大取得サイズ（デフォルト: 5MB）
-    ///   - extractor: コンテンツ抽出器（デフォルト: SwiftSoupContentExtractor）
+    ///   - maxContentSize: 最大取得サイズ（デフォルト: 5 MB）
+    ///   - extractor: コンテンツ抽出器（デフォルト: `SwiftSoupContentExtractor`）
     ///   - transport: HTTP トランスポート（テスト時に差し替え可能）
     public init(
         registry: SourceRegistry,
@@ -339,9 +339,9 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
 
     // MARK: - HTML Detection
 
-    /// コンテンツがHTMLかどうかを判定
+    /// コンテンツが HTML かどうかを判定する。
     ///
-    /// Content-Typeヘッダーと先頭のHTMLタグの両方で判定します。
+    /// Content-Type ヘッダーと先頭の HTML タグの両方で判定する。
     private static func isHTMLContent(contentType: String?, content: String) -> Bool {
         // Content-Typeベースの判定
         if let ct = contentType?.lowercased() {
@@ -418,7 +418,7 @@ private struct FetchResult: Codable {
 
 // MARK: - Errors
 
-/// ResearchToolKitのエラー
+/// `ResearchToolKit` が fetch / URL 検証時にスローするエラー。
 public enum ResearchToolError: Error, LocalizedError {
     case invalidURL(String)
     case unsupportedScheme(String)

@@ -3,12 +3,12 @@ import SwiftSoup
 
 // MARK: - SwiftSoupContentExtractor
 
-/// SwiftSoupを使用したWebコンテンツ抽出のデフォルト実装
+/// SwiftSoup を使用した Web コンテンツ抽出のデフォルト実装。
 ///
-/// 3つの主要な責務を持ちます：
-/// 1. **DOMクリーニング** — 不要な要素（script, style, nav等）を除去
-/// 2. **Readabilityスコアリング** — 本文コンテンツの自動検出
-/// 3. **Markdown変換** — DOMを再帰的にMarkdownへ変換
+/// 3 つの主要な責務を持つ：
+/// 1. **DOM クリーニング** — 不要な要素（script, style, nav 等）を除去
+/// 2. **Readability スコアリング** — 本文コンテンツの自動検出
+/// 3. **Markdown 変換** — DOM を再帰的に Markdown へ変換
 ///
 /// ## 使用例
 ///
@@ -23,6 +23,14 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
 
     // MARK: - WebContentExtractor
 
+    /// HTML 文字列からコンテンツを抽出し Markdown 形式で返す。
+    ///
+    /// DOM クリーニング → Readability スコアリング → Markdown 変換 の順で処理する。
+    /// - Parameters:
+    ///   - html: 生の HTML 文字列
+    ///   - url: ページの URL（相対リンクの絶対化に使う）
+    /// - Returns: 抽出されたコンテンツ（タイトル・Markdown 本文・メタデータ）
+    /// - Throws: HTML に `<body>` 要素が存在しない場合にエラーをスロー
     public func extract(html: String, url: URL) throws -> ExtractedContent {
         let doc = try SwiftSoup.parse(html, url.absoluteString)
 

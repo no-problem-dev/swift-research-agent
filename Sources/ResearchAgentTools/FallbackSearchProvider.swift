@@ -2,10 +2,10 @@ import Foundation
 
 // MARK: - FallbackSearchProvider
 
-/// 複数プロバイダーの自動フォールバックチェーン
+/// 複数プロバイダーの自動フォールバックチェーン。
 ///
-/// プロバイダーを順番に試行し、最初に成功した結果を返します。
-/// 空結果も失敗として扱い、次のプロバイダーに進みます。
+/// プロバイダーを順番に試行し、最初に成功した結果を返す。
+/// 空結果も失敗として扱い、次のプロバイダーに進む。
 ///
 /// ## 使用例
 ///
@@ -32,6 +32,13 @@ public final class FallbackSearchProvider: WebSearchProvider, @unchecked Sendabl
 
     // MARK: - WebSearchProvider
 
+    /// プロバイダーを順番に試行し、最初に成功した結果を返す。
+    ///
+    /// - Parameters:
+    ///   - query: 検索クエリ
+    ///   - maxResults: 最大結果数
+    /// - Returns: 最初に成功したプロバイダーの検索結果
+    /// - Throws: 全プロバイダーが失敗した場合 `WebSearchError.allProvidersFailed`
     public func search(query: String, maxResults: Int) async throws -> [WebSearchResult] {
         var errors: [Error] = []
 

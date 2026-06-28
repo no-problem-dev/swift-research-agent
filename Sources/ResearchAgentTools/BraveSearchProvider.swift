@@ -6,10 +6,9 @@ import FoundationNetworking
 
 // MARK: - BraveSearchProvider
 
-/// Brave Search REST APIを使用した検索プロバイダー
+/// Brave Search REST API を使用した検索プロバイダー。
 ///
-/// Brave Search APIキーが必要です。
-/// https://brave.com/search/api/ から取得できます。
+/// Brave Search APIキーが必要（https://brave.com/search/api/ から取得）。
 ///
 /// ## 使用例
 ///
@@ -28,7 +27,7 @@ public final class BraveSearchProvider: WebSearchProvider, @unchecked Sendable {
 
     // MARK: - Initialization
 
-    /// BraveSearchProviderを作成
+    /// BraveSearchProvider を作成する。
     ///
     /// - Parameters:
     ///   - apiKey: Brave Search APIキー
@@ -59,6 +58,13 @@ public final class BraveSearchProvider: WebSearchProvider, @unchecked Sendable {
 
     // MARK: - WebSearchProvider
 
+    /// Brave Search APIで検索を実行する。
+    ///
+    /// - Parameters:
+    ///   - query: 検索クエリ
+    ///   - maxResults: 最大結果数（最大 20）
+    /// - Returns: 検索結果の配列
+    /// - Throws: `WebSearchError`
     public func search(query: String, maxResults: Int) async throws -> [WebSearchResult] {
         var components = URLComponents(string: "https://api.search.brave.com/res/v1/web/search")!
         var queryItems = [

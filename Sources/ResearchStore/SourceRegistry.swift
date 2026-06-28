@@ -8,6 +8,7 @@ public struct SourceRecord: Sendable, Codable, Equatable {
     public let normalizedURL: String
     /// 最初に観測した元の表記
     public let url: String
+    /// ページタイトル（検索結果または fetch 時に取得、未取得なら `nil`）
     public var title: String?
     /// 検索結果のスニペット（検索経由で観測した場合）
     public var snippet: String?
@@ -41,6 +42,10 @@ public actor SourceRegistry {
     /// 本文保持の上限（1 ソースあたり）。照合材料として十分な範囲でメモリを抑える
     private let maxContentLength: Int
 
+    /// 台帳を作成する。
+    ///
+    /// - Parameter maxContentLength: 1 ソースあたりの本文保持上限（文字数、デフォルト: 200,000）。
+    ///   ページネーション再取得でより長い本文が得られた場合は更新する。
     public init(maxContentLength: Int = 200_000) {
         self.maxContentLength = maxContentLength
     }
@@ -108,6 +113,7 @@ public actor SourceRegistry {
         }
     }
 
+    /// 台帳に記録された全ソースの一覧。
     public var allRecords: [SourceRecord] {
         Array(records.values)
     }

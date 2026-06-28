@@ -2,25 +2,24 @@ import Foundation
 
 // MARK: - WebContentExtractor Protocol
 
-/// HTMLコンテンツ抽出プロバイダーのプロトコル
+/// HTML コンテンツ抽出の抽象プロトコル。
 ///
-/// 異なる抽出戦略を差し替え可能にするための抽象化です。
-/// `WebSearchProvider` パターンに倣い、デフォルト実装として
-/// `SwiftSoupContentExtractor` を提供します。
+/// 異なる抽出戦略を差し替え可能にする。`WebSearchProvider` パターンに倣い、
+/// デフォルト実装として `SwiftSoupContentExtractor` を提供する。
 ///
 /// ## 使用例
 ///
 /// ```swift
 /// let extractor = SwiftSoupContentExtractor()
-/// let content = try await extractor.extract(html: htmlString, url: pageURL)
+/// let content = try extractor.extract(html: htmlString, url: pageURL)
 /// print(content.content) // Markdown形式のテキスト
 /// ```
 public protocol WebContentExtractor: Sendable {
-    /// HTMLからコンテンツを抽出
+    /// HTML からコンテンツを抽出する。
     ///
     /// - Parameters:
-    ///   - html: 生のHTML文字列
-    ///   - url: ページのURL（相対リンクの解決に使用）
+    ///   - html: 生の HTML 文字列
+    ///   - url: ページの URL（相対リンクの絶対化に使う）
     /// - Returns: 抽出されたコンテンツ
     func extract(html: String, url: URL) throws -> ExtractedContent
 }

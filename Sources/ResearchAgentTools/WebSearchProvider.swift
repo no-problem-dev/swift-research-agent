@@ -2,9 +2,7 @@ import Foundation
 
 // MARK: - WebSearchProvider Protocol
 
-/// Web検索プロバイダーのプロトコル
-///
-/// 異なる検索エンジンバックエンドを差し替え可能にするための抽象化です。
+/// 検索エンジンバックエンドを差し替え可能にする抽象プロトコル。
 ///
 /// ## 使用例
 ///
@@ -13,7 +11,7 @@ import Foundation
 /// let results = try await provider.search(query: "Swift concurrency", maxResults: 5)
 /// ```
 public protocol WebSearchProvider: Sendable {
-    /// 検索を実行
+    /// 検索を実行する。
     ///
     /// - Parameters:
     ///   - query: 検索クエリ
@@ -55,10 +53,10 @@ public struct WebSearchResult: Codable, Sendable {
 
 // MARK: - UnconfiguredSearchProvider
 
-/// APIキー未設定時のフォールバックプロバイダー
+/// APIキー未設定時のフォールバックプロバイダー。
 ///
-/// 検索実行時に設定方法を案内するエラーを返します。
-/// ビルドは通るが、実行時にユーザーに設定を促します。
+/// 検索実行時に設定方法を案内するエラーを返す。
+/// ビルドは通るが、実行時にユーザーに設定を促す。
 public struct UnconfiguredSearchProvider: WebSearchProvider {
     public init() {}
 

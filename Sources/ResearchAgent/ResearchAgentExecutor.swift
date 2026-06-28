@@ -39,6 +39,21 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
     /// ネイティブ会話履歴（tool call/result を型のまま保持）。
     let history: any AgentHistoryStore
 
+    /// ResearchAgentExecutor を作成する。
+    ///
+    /// - Parameters:
+    ///   - client: LLM 呼び出しに使うクライアント（`AgentCapableClient` 適合）。
+    ///   - model: 使用するモデル識別子。
+    ///   - tools: エージェントが呼び出せるツールセット。
+    ///   - systemPrompt: システムプロンプト。`nil` でプロバイダーデフォルト。
+    ///   - maxSteps: エージェントループの最大ステップ数（デフォルト: 16）。
+    ///   - maxTokens: 1 回の LLM 呼び出しあたりの最大出力トークン数。`nil` でプロバイダーデフォルト。
+    ///   - registry: 観測ソースの台帳。`ResearchToolKit` と共有するセッションスコープの actor。
+    ///   - maxRetries: 出典検証 NG 時の是正リトライ上限（デフォルト: 2）。
+    ///   - cachePolicy: システムプロンプト・ツール宣言のキャッシュ方針。
+    ///   - onSystemPrompt: ループが実際にレンダリングした system prompt を受け取る観測フック（デバッグ・計測用、省略可）。
+    ///   - onUsage: LLM 呼び出し 1 回ごとの usage を受け取る観測フック（呼び出し番号・usage・モデル ID、省略可）。是正リトライを跨ぐ per-call 計測に使う。
+    ///   - history: ネイティブ会話履歴ストア。tool call/result を型のまま保持する。
     public init(
         client: Client,
         model: Client.Model,
@@ -67,6 +82,11 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
         self.history = history
     }
 
+    /// タスクリクエストを実行する。
+    ///
+    /// `AgentLoop` を駆動し、完了テキストを `ResearchCitationGate` で検証する。
+    /// 違反がある場合は是正メッセージを積んで再試行し（上限 `maxRetries`）、
+    /// 合格した回答を artifact として出力する。上限到達時は劣化許容でそのまま出力する。
     public func execute(_ context: RequestContext, eventQueue: EventQueue) async throws {
         let updater = TaskUpdater(eventQueue: eventQueue, taskId: context.taskId, contextId: context.contextId)
         try await updater.startWork()
@@ -155,6 +175,7 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
         }
     }
 
+    /// タスクをキャンセルする。
     public func cancel(_ context: RequestContext, eventQueue: EventQueue) async throws {
         let updater = TaskUpdater(eventQueue: eventQueue, taskId: context.taskId, contextId: context.contextId)
         try await updater.cancel()
