@@ -26,6 +26,16 @@ let executor = ResearchAgentExecutor(
 
 出典が `SourceRegistry` に記帳されていない URL、または `fetched == false` の URL を引用した回答は `maxRetries` 回まで自動是正されます。合格した回答のアーティファクトには `research.references` キーで引用出典の構造化データ（`[SourceRecord]` JSON）が付きます。
 
+### 兄弟モジュールとの役割分担
+
+このパッケージは 3 層構造で成り立っています。
+
+**`ResearchStore`** はパッケージ最下位の台帳層です。`SourceRegistry` actor がタスク中に観測した全 URL の記録（`SourceRecord`）を保持します。UI・LLM・ネットワークに依存せず、単独でインポートして使えます。検索結果（`fetched == false`）と fetch 成功（`fetched == true`）を区別して記帳し、引用可否の判定根拠を提供します。また `URLNormalization` がトラッキングパラメータ・フラグメント・`www.` 等の表記ゆれを畳み込み、台帳キーの一意性を保証します。
+
+**`ResearchAgentTools`** は Layer 1 のツール層です。`ResearchToolKit` が `web_search` / `fetch` の 2 ツールを LLM ツールとして組み立て、取得結果を `SourceRegistry` へ記帳します。`SerperSearchProvider`（Google SERP）・`BraveSearchProvider`・`FallbackSearchProvider`（複数プロバイダーのフォールバックチェーン）・`ResilientSearchProvider`（キャッシュ・レートリミット・サーキットブレーカー付きラッパー）を提供し、`WebSearchProvider` プロトコルで独自バックエンドへの差し替えも可能です。
+
+**`ResearchAgent`**（このモジュール）は Layer 2 のエージェント層です。`ResearchAgentExecutor` が `AgentLoop` を駆動し、`ResearchCitationGate` が `SourceRegistry` への照合で回答を検証します。`ResearcherAgent` はツール構成に応じた system prompt・AgentCard・委譲説明を組み立てます。
+
 ## Topics
 
 ### Essentials
