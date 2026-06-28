@@ -48,7 +48,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
     // MARK: - (A) DOM Cleaning
 
     /// 不要な要素を除去
-    static func cleanDOM(_ doc: Document) {
+    private static func cleanDOM(_ doc: Document) {
         let selectorsToRemove = [
             "script", "style", "nav", "footer", "aside", "header",
             "svg", "noscript", "form", "iframe", "button",
@@ -81,7 +81,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
     // MARK: - (B) Readability Scoring
 
     /// 本文コンテンツ要素を特定
-    static func findMainContent(in doc: Document) throws -> Element {
+    private static func findMainContent(in doc: Document) throws -> Element {
         // 1. <article> or <main> があれば即採用
         if let article = try? doc.select("article").first(), let text = try? article.text(), !text.isEmpty {
             return article
@@ -116,7 +116,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
     }
 
     /// 要素のReadabilityスコアを計算
-    static func scoreElement(_ element: Element) -> Int {
+    private static func scoreElement(_ element: Element) -> Int {
         var score = 0
 
         // クラス/IDのセマンティック判定
@@ -179,7 +179,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
     // MARK: - (C) Markdown Conversion
 
     /// DOM要素をMarkdownに変換
-    static func convertToMarkdown(element: Element, baseURL: URL) -> String {
+    private static func convertToMarkdown(element: Element, baseURL: URL) -> String {
         var lines: [String] = []
         walkNode(element, baseURL: baseURL, lines: &lines, listDepth: 0, listIndex: nil)
         return lines.joined(separator: "\n")
@@ -446,7 +446,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
     // MARK: - Metadata Extraction
 
     /// メタデータを抽出
-    static func extractMetadata(from doc: Document) -> [String: String] {
+    private static func extractMetadata(from doc: Document) -> [String: String] {
         var metadata: [String: String] = [:]
 
         // og:title
@@ -483,7 +483,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
     }
 
     /// タイトルを抽出（og:title > <title> の優先順位）
-    static func extractTitle(from doc: Document, metadata: [String: String]) -> String? {
+    private static func extractTitle(from doc: Document, metadata: [String: String]) -> String? {
         if let ogTitle = metadata["og:title"] {
             return ogTitle
         }
@@ -509,7 +509,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
     }
 
     /// 後処理: 連続空行圧縮、行末空白除去
-    static func postProcess(_ markdown: String) -> String {
+    private static func postProcess(_ markdown: String) -> String {
         let lines = markdown.components(separatedBy: "\n")
             .map { $0.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression) }
 
@@ -535,7 +535,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
 
 // MARK: - Errors
 
-enum SwiftSoupExtractorError: Error, LocalizedError {
+private enum SwiftSoupExtractorError: Error, LocalizedError {
     case noBody
 
     var errorDescription: String? {

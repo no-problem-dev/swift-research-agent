@@ -342,7 +342,7 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
     /// コンテンツがHTMLかどうかを判定
     ///
     /// Content-Typeヘッダーと先頭のHTMLタグの両方で判定します。
-    static func isHTMLContent(contentType: String?, content: String) -> Bool {
+    private static func isHTMLContent(contentType: String?, content: String) -> Bool {
         // Content-Typeベースの判定
         if let ct = contentType?.lowercased() {
             if ct.contains("text/html") || ct.contains("application/xhtml+xml") {

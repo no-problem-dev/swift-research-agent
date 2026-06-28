@@ -31,11 +31,11 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
     let maxRetries: Int
     let cachePolicy: PromptCachePolicy
     /// ループが実際にレンダリングした system prompt の観測フック（デバッグ計測用）。
-    var onSystemPrompt: (@Sendable (String) async -> Void)?
+    let onSystemPrompt: (@Sendable (String) async -> Void)?
     /// LLM 呼び出し 1 回ごとの usage 観測フック（呼び出し番号, usage, モデル ID）。
     /// 委譲結果の usage は全呼び出しの合算なので、「合算値 = プロンプトサイズ」の
     /// 誤読を防ぐにはこの per-call 計測を購読する。
-    var onUsage: (@Sendable (_ call: Int, _ usage: TokenUsage, _ model: String) async -> Void)?
+    let onUsage: (@Sendable (_ call: Int, _ usage: TokenUsage, _ model: String) async -> Void)?
     /// ネイティブ会話履歴（tool call/result を型のまま保持）。
     let history: any AgentHistoryStore
 
@@ -113,7 +113,7 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                         if !text.isEmpty {
                             try await updater.updateStatus(.working, message: updater.newAgentMessage([.text(text)]))
                         }
-                    case .toolCall(_, let name, _):
+                    case .toolCall(_, let name):
                         try await updater.updateStatus(.working, message: updater.newAgentMessage([.text("🔧 \(name)")]))
                     case .toolResult:
                         // ソースの記帳はツール自身が SourceRegistry へ行う（傍受不要）
