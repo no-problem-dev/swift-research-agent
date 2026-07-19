@@ -1,3 +1,4 @@
+import A2AServer
 import AgentLoopKit
 import AgentRuntime
 import Foundation
@@ -119,7 +120,7 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
         )
 
         let contextId = context.contextId.rawValue
-        let userInput = context.getUserInput()
+        let userInput = context.userInput()
         let priorHistory = await history.history(for: contextId)
         var messages = priorHistory + [.user(userInput)]
         var attempt = 0
@@ -131,15 +132,15 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                     switch event {
                     case .thinking(let text):
                         if !text.isEmpty {
-                            try await updater.updateStatus(.working, message: updater.newAgentMessage([.text(text)]))
+                            try await updater.updateStatus(.working, message: updater.makeAgentMessage([.text(text)]))
                         }
-                    case .toolCall(_, let name):
-                        try await updater.updateStatus(.working, message: updater.newAgentMessage([.text("🔧 \(name)")]))
+                    case .toolCall(_, let name, _):
+                        try await updater.updateStatus(.working, message: updater.makeAgentMessage([.text("🔧 \(name)")]))
                     case .toolResult:
                         // ソースの記帳はツール自身が SourceRegistry へ行う（傍受不要）
                         break
                     case .inputRequired(let question):
-                        try await updater.requiresInput(message: updater.newAgentMessage([.text(question)]))
+                        try await updater.requiresInput(message: updater.makeAgentMessage([.text(question)]))
                     case .completed(let text):
                         finalText = text
                     }
@@ -164,14 +165,14 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                 attempt += 1
                 try await updater.updateStatus(
                     .working,
-                    message: updater.newAgentMessage([.text("🔎 出典検証 NG (\(issues.count) 件) → 修正 \(attempt)/\(maxRetries)")])
+                    message: updater.makeAgentMessage([.text("🔎 出典検証 NG (\(issues.count) 件) → 修正 \(attempt)/\(maxRetries)")])
                 )
                 messages = transcript + [.user(ResearchCitationGate.corrective(issues: issues))]
             }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            try? await updater.failed(message: updater.newAgentMessage([.text("\(error)")]))
+            try? await updater.fail(message: updater.makeAgentMessage([.text("\(error)")]))
         }
     }
 
