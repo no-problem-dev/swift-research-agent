@@ -130,7 +130,7 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                 var finalText = ""
                 let transcript = try await loop.run(messages: messages) { event in
                     switch event {
-                    case .thinking(let text):
+                    case .thinkingDelta(let text):
                         if !text.isEmpty {
                             try await updater.updateStatus(.working, message: updater.makeAgentMessage([.text(text)]))
                         }
@@ -139,6 +139,16 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                     case .toolResult:
                         // ソースの記帳はツール自身が SourceRegistry へ行う（傍受不要）
                         break
+                    case .textDelta:
+                        // 最終本文は .completed で受け取る。増分は状態表示に使わない
+                        // （thinkingDelta と二重に流すと利用者側の表示が混ざる）。
+                        break
+                    case .toolApprovalRequired(_, let name, _, _):
+                        // このワーカーは無人で走るので承認を取る経路が無い。
+                        // AgentLoop は承認要求を出した時点でツールを実行せず戻るため、
+                        // ここで黙ると「本文が空のまま終わった」ようにしか見えなくなる。理由を残す。
+                        try await updater.updateStatus(.working, message: updater.makeAgentMessage(
+                            [.text("承認が必要なツール「\(name)」が呼ばれたため中断した（無人実行では承認できない）")]))
                     case .inputRequired(let question):
                         try await updater.requiresInput(message: updater.makeAgentMessage([.text(question)]))
                     case .completed(let text):

@@ -14,7 +14,7 @@ let package = Package(
         // Tool プロトコル・JSONSchema・SystemPrompt（プロバイダー非依存の契約層）
         .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "3.5.1"),
         // AgentLoop / HostAgent（ワーカーの実行環境）
-        .package(url: "https://github.com/no-problem-dev/swift-agent-runtime.git", from: "0.12.0"),
+        .package(url: "https://github.com/no-problem-dev/swift-agent-runtime.git", from: "0.17.0"),
         // AgentExecutor / EventQueue / TaskUpdater（A2A サーバ側の実行契約）。
         // 以前は agent-runtime の @_exported 経由で暗黙に見えていたが、再輸出が
         // 廃止されたので自分で依存を宣言する。

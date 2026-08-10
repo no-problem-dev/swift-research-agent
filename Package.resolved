@@ -1,13 +1,13 @@
 {
-  "originHash" : "fbdc16d94e215c8fa433a55ed825748314e38b14caf05f9bbf5cfaee77276081",
+  "originHash" : "2b254cc708959ff734add6da36bdaede862e42261e277c972a1fc14bafd98bde",
   "pins" : [
     {
       "identity" : "swift-a2a",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-a2a.git",
       "state" : {
-        "revision" : "5982c121e3cb7505d64229dcfa0d2d7f72fbcb13",
-        "version" : "0.7.0"
+        "revision" : "86d06404fb28494a7ef0b272eb2115507c12e0fb",
+        "version" : "0.7.1"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-acp.git",
       "state" : {
-        "revision" : "f93773f8b2be3cf1c4980e5d4444bd82e39d281a",
-        "version" : "0.1.0"
+        "revision" : "b95375db32ed32a48e211bf025fb4069585069f3",
+        "version" : "0.2.0"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-agent-runtime.git",
       "state" : {
-        "revision" : "1acf4d902aa27143e869d0dd5574856dbb207304",
-        "version" : "0.12.0"
+        "revision" : "2dd492f3bf9eea2b117a063dd625539ea298a703",
+        "version" : "0.17.0"
       }
     },
     {
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-http-transport.git",
       "state" : {
-        "revision" : "aa837e2278cd264ca95cf38da2e62ef177a9381a",
-        "version" : "1.1.0"
+        "revision" : "9e72aec5d099fe5fa6ff3cb43263038bd307f07b",
+        "version" : "1.1.2"
       }
     },
     {
@@ -60,8 +60,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-llm-client.git",
       "state" : {
-        "revision" : "369f9be2f4b3c968aab905ead6f23b2c839fb70a",
-        "version" : "3.10.0"
+        "revision" : "33df7b6b890e13bc690a7662e24c55d4bc94ce69",
+        "version" : "3.13.0"
       }
     },
     {
@@ -69,8 +69,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-structured-data.git",
       "state" : {
-        "revision" : "0b0580351e5b944f99f8beff3ad5b6eed84f052d",
-        "version" : "1.3.0"
+        "revision" : "8bfbfe1091610e300409c2dad0506e498d04d014",
+        "version" : "2.0.0"
       }
     },
     {
@@ -78,8 +78,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax.git",
       "state" : {
-        "revision" : "4799286537280063c85a32f09884cfbca301b1a1",
-        "version" : "602.0.0"
+        "revision" : "79e4b74a295b6eb74a8b585e3a39d29e70c1dbd1",
+        "version" : "603.0.2"
       }
     },
     {
@@ -87,8 +87,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/scinfu/SwiftSoup.git",
       "state" : {
-        "revision" : "49dcadd93161f4a44b4994d3a3e8de9f085aface",
-        "version" : "2.13.5"
+        "revision" : "8d6ad267714cac3ae747cefdd21f7a6665006e1f",
+        "version" : "2.13.7"
       }
     }
   ],
