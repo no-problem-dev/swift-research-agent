@@ -48,6 +48,29 @@ struct ResearchCitationGateTests {
         #expect(issues.isEmpty)
     }
 
+    @Test("正規化できない URL でも fetch 成功は台帳に残り、引用が捏造扱いにならない")
+    func fetchSurvivesUnnormalizableURL() async {
+        // URLComponents は数字でないポートを解析できないので、この URL には正規化キーが無い。
+        // 形そのものは論点ではない — 「正規化に失敗する」ことだけが前提。
+        let url = "https://example.com:8o80/report"
+        #expect(URLNormalization.normalize(url) == nil)
+
+        let registry = SourceRegistry()
+        let key = await registry.registerFetch(url: url, title: "Report", content: "body")
+
+        // 呼び出し側は「正規化できずこの綴りのまま記帳した」ことを受け取れる。
+        #expect(key == .verbatim(url))
+        #expect(!key.isCanonical)
+
+        // fetch は成功している。台帳に無いことにされてはいけない。
+        let record = await registry.record(citing: url)
+        #expect(record?.fetched == true)
+
+        // ゲートが「モデルが捏造した」と報告してはいけない。原因は台帳側にある。
+        let issues = await ResearchCitationGate.validate(text: "結論。出典: \(url)", registry: registry)
+        #expect(issues.isEmpty)
+    }
+
     @Test("URL 抽出は末尾約物を除去し重複を畳む")
     func extractsURLs() {
         let text = """

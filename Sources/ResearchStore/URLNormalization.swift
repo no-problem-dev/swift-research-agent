@@ -17,8 +17,8 @@ public enum URLNormalization {
 
     /// Canonicalizes a URL into a ledger key.
     ///
-    /// - Returns: `nil` for anything that is not parsable http or https — callers treat that as
-    ///   "not a source" rather than as an error.
+    /// - Returns: `nil` for anything that is not parsable http or https. That means "no canonical
+    ///   key for this URL", not "not a source": `SourceKey` falls back to the URL as written.
     public static func normalize(_ urlString: String) -> String? {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,

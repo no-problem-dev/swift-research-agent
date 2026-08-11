@@ -14,14 +14,13 @@ import ResearchStore
 /// Violations become a corrective user turn and the loop runs again, up to `maxRetries` times.
 /// The retries are invisible from the outside: the caller sees one task that took longer.
 ///
-/// The last attempt is not checked. When `attempt` reaches `maxRetries` the answer is emitted as
-/// it stands, so an answer that never satisfies the gate still reaches the caller — and with
-/// `maxRetries: 0` the check never runs at all.
+/// Every attempt is checked, the last one included, so `maxRetries: 0` means one attempt that is
+/// still validated. An answer that never satisfies the gate is never completed: once the retries
+/// are spent the task fails, carrying the violations and the rejected text, so nothing downstream
+/// can mistake it for a checked answer.
 ///
-/// A completed task carries one text artifact plus metadata: token usage under `llm.usage`, and
-/// the cited sources as JSON under `research.references`. References are built from whatever the
-/// final text cites, so on an unchecked last attempt they can be empty or can include sources that
-/// were only ever search hits.
+/// A completed task therefore always passed the gate, and carries one text artifact plus metadata:
+/// token usage under `llm.usage`, and the cited sources as JSON under `research.references`.
 public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor where Client.Model: Sendable {
     /// Artifact metadata key carrying the cited sources.
     ///
@@ -37,7 +36,7 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
     let maxTokens: Int?
     /// Source ledger; must be the same instance the tool kit writes to, or every citation fails.
     let registry: SourceRegistry
-    /// Corrective retries the gate gets. The attempt after the last one is emitted unchecked.
+    /// Corrective retries the gate gets after a failed check. `0` still validates the one attempt.
     let maxRetries: Int
     let cachePolicy: PromptCachePolicy
     /// Receives the system prompt the loop actually rendered — once per task, even across retries.
@@ -64,8 +63,8 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
     ///   - maxTokens: Output token cap per LLM call, or `nil` for the provider default.
     ///   - registry: Source ledger. Must be the instance the tool kit records into, otherwise
     ///     every citation looks fabricated.
-    ///   - maxRetries: Corrective retries after a failed citation check (default: 2). `0` skips
-    ///     the check entirely.
+    ///   - maxRetries: Corrective retries after a failed citation check (default: 2). `0` means one
+    ///     attempt, still checked; spending them all without passing fails the task.
     ///   - cachePolicy: Caching of the system prompt and tool declarations.
     ///   - onSystemPrompt: Receives the rendered system prompt, once per task.
     ///   - onUsage: Receives usage per LLM call, including calls made during corrective retries.
@@ -99,7 +98,8 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
         self.history = history
     }
 
-    /// Runs one task: agent loop, citation check, corrective retries, then a single artifact.
+    /// Runs one task: agent loop, citation check, corrective retries, then a single artifact — or a
+    /// failed task when the citations never check out.
     ///
     /// Thinking text and tool names are streamed as working status; the answer text is not
     /// streamed. Cancellation propagates to the caller. Any other error is reported as a failed
@@ -172,9 +172,7 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                     }
                 }
 
-                let issues = attempt < maxRetries
-                    ? await ResearchCitationGate.validate(text: finalText, registry: registry)
-                    : []
+                let issues = await ResearchCitationGate.validate(text: finalText, registry: registry)
                 if issues.isEmpty {
                     // Store the exchange as an input/answer pair. Carrying the whole transcript,
                     // thousands of tokens of fetched page text included, would grow this context
@@ -185,6 +183,18 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                         [.text(finalText)], name: "response", metadata: await artifactMetadata(finalText: finalText, usage: await telemetryState.total)
                     )
                     try await updater.complete()
+                    return
+                }
+
+                guard attempt < maxRetries else {
+                    // The retry budget is spent and the citations still do not hold up. Completing
+                    // here would hand the caller an answer that looks checked, which is the one
+                    // thing this executor exists to prevent — so the task fails, carrying the
+                    // violations and the rejected text so nothing is lost and nothing is disguised.
+                    try await updater.fail(message: updater.makeAgentMessage([
+                        .text("出典検証を通らなかった（\(issues.count) 件）:\n" + issues.map { "- \($0)" }.joined(separator: "\n")),
+                        .text(finalText),
+                    ]))
                     return
                 }
 

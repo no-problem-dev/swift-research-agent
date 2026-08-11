@@ -45,9 +45,9 @@ print(record?.fetched)  // Optional(true)
 
 Two properties of the ledger are worth knowing before you rely on it:
 
-- **A URL that fails to normalize is dropped silently.** Registration returns without recording
-  anything and without an error, so a page that was really fetched can still be missing from the
-  ledger — and a citation of it then reads as fabricated.
+- **A URL that fails to normalize is still recorded, under its own spelling.** Registration returns
+  the ``SourceKey`` it used, so a caller can tell a `.canonical` key from a `.verbatim` one: a
+  verbatim key still makes the page citable, but spelling variants of it no longer fold together.
 - **Nothing is persisted and nothing is evicted.** The ledger lives as long as the actor. Stored
   page text is capped per source (200,000 characters by default), but the number of sources is not,
   so a long-running task grows monotonically.

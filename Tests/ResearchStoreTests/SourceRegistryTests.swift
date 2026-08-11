@@ -56,6 +56,24 @@ struct SourceRegistryTests {
         #expect(content == "long body text")
     }
 
+    @Test("記帳はどのキーで受けたかを返す（正規化できたか否か）")
+    func registrationReportsItsKey() async {
+        let registry = SourceRegistry()
+
+        let canonical = await registry.registerFetch(
+            url: "https://www.example.com/a/?utm_source=x", title: "A", content: "body"
+        )
+        #expect(canonical == .canonical("https://example.com/a"))
+        #expect(canonical.isCanonical)
+
+        // 正規化できない URL（URLComponents が数字でないポートを解析できない）。
+        let verbatim = await registry.registerSearchResult(
+            url: "https://example.com:8o80/b", title: "B", snippet: "s"
+        )
+        #expect(verbatim == .verbatim("https://example.com:8o80/b"))
+        #expect(await registry.record(citing: "https://example.com:8o80/b") != nil)
+    }
+
     @Test("references は引用順を保ち重複を除く")
     func referencesPreserveOrderAndDedupe() async {
         let registry = SourceRegistry()

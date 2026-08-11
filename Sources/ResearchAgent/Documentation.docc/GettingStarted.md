@@ -113,16 +113,14 @@ matches each one against the ledger:
 
 Matching happens on the normalized key, so `www.`, tracking parameters, a fragment or a trailing
 slash make no difference, while a different path or query is a different page and counts as uncited.
-Violations are turned into a corrective message and the loop runs again.
+Violations are turned into a corrective message and the loop runs again. Every attempt is checked,
+the last one included, and an answer that still fails once the retries are spent fails the task
+rather than completing it.
 
 ### What it does not catch
 
-- **The last attempt is unchecked.** After `maxRetries` corrections the answer is emitted as it
-  stands, so an answer that never passes still reaches the caller. Setting `maxRetries: 0` disables
-  the check altogether. If it matters to you whether an answer was checked, run
-  `ResearchCitationGate.validate(text:registry:)` yourself on the artifact.
 - **Provenance is not support.** Once a page has been fetched, it can be cited for anything — the
   gate never compares the answer against the stored page text.
-- **A silent gap in the ledger looks like fabrication.** A URL that fails normalization is dropped
-  from the ledger without an error even when the fetch succeeded, and citing it is then reported as
-  a URL that never appeared in a tool result.
+- **A verbatim ledger key does not fold spelling variants.** A URL that fails normalization is
+  recorded under exactly the spelling it was fetched with, so a citation written differently from
+  it — `www.` added, a tracking parameter dropped — will not resolve to that record.

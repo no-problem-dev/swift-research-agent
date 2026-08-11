@@ -26,12 +26,15 @@ When the answer fails, the agent is told which citations were bad and asked to t
 retry limit you set. When it passes, the sources travel with the answer as structured metadata, so
 the surface showing it can list references without re-deriving them.
 
-**Two limits, before you call this hallucination-proof.** The final attempt ships as it stands: once
-the retry budget is spent the answer is returned even if it still fails, and with `maxRetries: 0`
-the check never runs. And only provenance is checked, never support — a page that was fetched can be
-cited for a claim it never made, or contradicts. What it does rule out is a citation to a URL this
-task never fetched: one recalled from training, one invented, or one seen in a snippet and never
-opened.
+Every attempt is checked, the last one included, so `maxRetries: 0` means one attempt that is still
+checked. An answer that never passes is never completed: once the retry budget is spent the task
+fails, carrying the violations and the rejected text, so nothing downstream can mistake it for a
+verified answer.
+
+**One limit, before you call this hallucination-proof.** Only provenance is checked, never support —
+a page that was fetched can be cited for a claim it never made, or contradicts. What it does rule
+out is a citation to a URL this task never fetched: one recalled from training, one invented, or one
+seen in a snippet and never opened.
 
 - **Search backends are swappable** — Serper and Brave included, or chain several so one outage does
   not end the task

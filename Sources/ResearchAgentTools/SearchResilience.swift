@@ -88,9 +88,11 @@ public actor RateLimiter {
 
     /// Waits until a token is available, then spends it.
     ///
-    /// If the task is cancelled while waiting, this returns without spending one and without
-    /// throwing, so the caller proceeds unthrottled — cancellation is not surfaced here.
-    public func acquire() async {
+    /// - Throws: `CancellationError` when the task is cancelled, whether it was already cancelled
+    ///   on entry or is cancelled while waiting. Nothing is spent and the caller stops, rather
+    ///   than going on to make the request the limiter was holding back.
+    public func acquire() async throws {
+        try Task.checkCancellation()
         refillTokens()
 
         if tokens >= 1.0 {
@@ -100,12 +102,7 @@ public actor RateLimiter {
 
         // Wait for token to become available
         let waitTime = (1.0 - tokens) / refillRate
-        do {
-            try await Task.sleep(for: .milliseconds(Int(waitTime * 1000)))
-        } catch {
-            // Cancelled - allow caller to handle
-            return
-        }
+        try await Task.sleep(for: .milliseconds(Int(waitTime * 1000)))
         refillTokens()
         tokens = max(tokens - 1.0, 0)
     }
@@ -308,11 +305,12 @@ public final class ResilientSearchProvider: WebSearchProvider, Sendable {
     /// Runs a query through the cache, the breaker, the rate limit and the retries.
     ///
     /// Only successful, non-cached calls are stored, and every failed attempt — retries included —
-    /// counts toward opening the breaker.
+    /// counts toward opening the breaker. Cancellation is neither retried nor counted: it stops
+    /// the search where it stands.
     ///
     /// - Returns: The cached results when a valid entry exists, otherwise the provider's.
     /// - Throws: `WebSearchError.circuitBreakerOpen` while the breaker is open and cooling down,
-    ///   otherwise the error from the last attempt.
+    ///   `CancellationError` if the task is cancelled, otherwise the error from the last attempt.
     public func search(query: String, maxResults: Int) async throws -> [WebSearchResult] {
         // 1. Check cache
         if let cached = await cache.get(query: query, maxResults: maxResults) {
@@ -330,16 +328,20 @@ public final class ResilientSearchProvider: WebSearchProvider, Sendable {
         for attempt in 0...maxRetries {
             if attempt > 0 {
                 // Exponential backoff for retries
-                try? await Task.sleep(for: .milliseconds(500 * (1 << (attempt - 1))))
+                try await Task.sleep(for: .milliseconds(500 * (1 << (attempt - 1))))
             }
 
-            await rateLimiter.acquire()
+            try await rateLimiter.acquire()
 
             do {
                 let results = try await provider.search(query: query, maxResults: maxResults)
                 await circuitBreaker.recordSuccess()
                 await cache.set(results, query: query, maxResults: maxResults)
                 return results
+            } catch is CancellationError {
+                // The caller stopped waiting. Retrying would fire the request anyway, and counting
+                // it as a provider failure would open the breaker over a call nobody wanted.
+                throw CancellationError()
             } catch {
                 lastError = error
                 await circuitBreaker.recordFailure()

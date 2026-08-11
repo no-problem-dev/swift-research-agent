@@ -33,11 +33,12 @@ Every http(s) URL in an answer must resolve, after normalization, to a ledger re
 fetched. A URL with no record, or one that only ever appeared in search results, is a violation, and
 violations become a corrective turn for the model.
 
-Two limits matter before you describe this as preventing hallucinated citations:
+Every attempt is checked, the last one included, so `maxRetries: 0` means one attempt that is still
+checked. An answer that never satisfies the gate is never completed: once the retries are spent the
+task fails, carrying the violations and the rejected text.
 
-- **The last attempt is not checked.** Once the retry count reaches `maxRetries` the answer is
-  emitted as it stands, so an answer that never satisfies the gate still reaches the caller. With
-  `maxRetries: 0` the check never runs at all.
+One limit matters before you describe this as preventing hallucinated citations:
+
 - **Only provenance is checked, never support.** A page that was fetched can be cited for any claim,
   including one it contradicts. The ledger stores the page text, but the gate never compares it
   against the answer.
