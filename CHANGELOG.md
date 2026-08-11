@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-11
+
 ### Changed
 
 - Builds and tests on Linux, verified against `swift:6.2` in Docker. One thing was in the way, in
