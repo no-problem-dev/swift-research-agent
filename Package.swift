@@ -12,15 +12,15 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
         // Tool プロトコル・JSONSchema・SystemPrompt（プロバイダー非依存の契約層）
-        .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "4.0.0"),
+        .package(url: "https://github.com/no-problem-dev/swift-llm-client.git", from: "5.0.0"),
         // AgentLoop / HostAgent（ワーカーの実行環境）
-        .package(url: "https://github.com/no-problem-dev/swift-agent-runtime.git", .upToNextMinor(from: "0.18.0")),
+        .package(url: "https://github.com/no-problem-dev/swift-agent-runtime.git", .upToNextMinor(from: "0.20.0")),
         // AgentExecutor / EventQueue / TaskUpdater（A2A サーバ側の実行契約）。
         // 以前は agent-runtime の @_exported 経由で暗黙に見えていたが、再輸出が
         // 廃止されたので自分で依存を宣言する。
         .package(url: "https://github.com/no-problem-dev/swift-a2a.git", .upToNextMinor(from: "0.8.0")),
         // HTTP トランスポート抽象（テスト時に差し替え可能）
-        .package(url: "https://github.com/no-problem-dev/swift-http-transport.git", from: "1.0.0"),
+        .package(url: "https://github.com/no-problem-dev/swift-http-transport.git", from: "2.0.0"),
         // HTML 本文抽出
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
     ],

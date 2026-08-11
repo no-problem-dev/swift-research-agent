@@ -1,5 +1,5 @@
 {
-  "originHash" : "f27c9c500bb4829124891f14a6fab851c897fe73e137d2868000ab86c82de6e8",
+  "originHash" : "f56533957d0baa2566a66bc023aabeb632992f16c379a965974afed8572f41c0",
   "pins" : [
     {
       "identity" : "swift-a2a",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-agent-runtime.git",
       "state" : {
-        "revision" : "9714a880cfb7d0dcc91edd72725c279c16ec51e6",
-        "version" : "0.18.1"
+        "revision" : "0a592f0d02f641f13fce636a1449a78fa0557d5e",
+        "version" : "0.20.0"
       }
     },
     {
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-http-transport.git",
       "state" : {
-        "revision" : "9e72aec5d099fe5fa6ff3cb43263038bd307f07b",
-        "version" : "1.1.2"
+        "revision" : "c45624d72eb19ab4500d5ff0dbce3ad094714829",
+        "version" : "2.1.0"
       }
     },
     {
@@ -60,8 +60,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-llm-client.git",
       "state" : {
-        "revision" : "3640d5ee2ad8d5f903fc52656667dad60755a3c7",
-        "version" : "4.0.0"
+        "revision" : "01385abac9954a703226a52d5c93b10eb6c8ac78",
+        "version" : "5.0.0"
       }
     },
     {
