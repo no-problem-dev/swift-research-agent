@@ -5,7 +5,7 @@ English | [日本語](./README.ja.md)
 Stop a research agent citing pages it never opened — its answer is checked against a ledger of what it actually fetched, and sent back when it does not hold up.
 
 ![Swift](https://img.shields.io/badge/Swift-6.2-orange.svg)
-![Platforms](https://img.shields.io/badge/Platforms-iOS%2017+%20%7C%20macOS%2014+-blue.svg)
+![Platforms](https://img.shields.io/badge/Platforms-iOS%2017+%20%7C%20macOS%2014+%20%7C%20Linux-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ## Overview
@@ -108,7 +108,7 @@ dependencies: [
 
 ## Requirements
 
-- iOS 17.0+ / macOS 14.0+
+- iOS 17.0+ / macOS 14.0+ / Linux
 - Swift 6.2+
 
 ## License
