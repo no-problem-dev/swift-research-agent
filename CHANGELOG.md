@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Raised the swift-agent-runtime pin to 0.20.0 and the swift-http-transport pin to 2.1.0.
+
+
 ## [0.2.0] - 2026-08-11
 
 ### Fixed
