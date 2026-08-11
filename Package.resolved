@@ -1,13 +1,13 @@
 {
-  "originHash" : "2b254cc708959ff734add6da36bdaede862e42261e277c972a1fc14bafd98bde",
+  "originHash" : "f27c9c500bb4829124891f14a6fab851c897fe73e137d2868000ab86c82de6e8",
   "pins" : [
     {
       "identity" : "swift-a2a",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-a2a.git",
       "state" : {
-        "revision" : "86d06404fb28494a7ef0b272eb2115507c12e0fb",
-        "version" : "0.7.1"
+        "revision" : "73adaae7ace6516d8c3e5bdbad2fb48231aaa821",
+        "version" : "0.8.0"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-agent-runtime.git",
       "state" : {
-        "revision" : "2dd492f3bf9eea2b117a063dd625539ea298a703",
-        "version" : "0.17.0"
+        "revision" : "9714a880cfb7d0dcc91edd72725c279c16ec51e6",
+        "version" : "0.18.1"
       }
     },
     {
@@ -60,8 +60,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-llm-client.git",
       "state" : {
-        "revision" : "33df7b6b890e13bc690a7662e24c55d4bc94ce69",
-        "version" : "3.13.0"
+        "revision" : "3640d5ee2ad8d5f903fc52656667dad60755a3c7",
+        "version" : "4.0.0"
       }
     },
     {
@@ -69,8 +69,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/no-problem-dev/swift-structured-data.git",
       "state" : {
-        "revision" : "8bfbfe1091610e300409c2dad0506e498d04d014",
-        "version" : "2.0.0"
+        "revision" : "a5a3dd4a034892f1124618de6a2491eed22ab166",
+        "version" : "3.0.1"
       }
     },
     {

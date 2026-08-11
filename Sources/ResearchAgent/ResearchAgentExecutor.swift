@@ -1,3 +1,4 @@
+import A2ACore
 import A2AServer
 import AgentLoopKit
 import AgentRuntime
