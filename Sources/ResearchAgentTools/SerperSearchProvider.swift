@@ -6,11 +6,12 @@ import FoundationNetworking
 
 // MARK: - SerperSearchProvider
 
-/// Serper（Google SERP）REST API を使用した検索プロバイダー。
+/// Search provider backed by the Serper REST API, which returns Google's result page.
 ///
-/// Serper APIキーが必要（https://serper.dev/ から取得）。
+/// Needs a Serper API key. Results keep the publication date and the rank Google reported, which
+/// is what the ledger records alongside each source.
 ///
-/// ## 使用例
+/// ## Example
 ///
 /// ```swift
 /// let provider = SerperSearchProvider(apiKey: "YOUR_API_KEY", gl: "jp", hl: "ja")
@@ -27,14 +28,14 @@ public final class SerperSearchProvider: WebSearchProvider, @unchecked Sendable 
 
     // MARK: - Initialization
 
-    /// SerperSearchProviderを作成
+    /// Creates a Serper-backed provider.
     ///
     /// - Parameters:
-    ///   - apiKey: Serper APIキー
-    ///   - gl: 地域コード（例: "jp"）
-    ///   - hl: 言語コード（例: "ja"）
-    ///   - timeout: リクエストのタイムアウト秒数（デフォルト: 15）
-    ///   - transport: HTTP トランスポート（テスト時に差し替え可能）
+    ///   - apiKey: Serper API key.
+    ///   - gl: Region code, for example "jp".
+    ///   - hl: Language code, for example "ja".
+    ///   - timeout: Per-request timeout in seconds (default: 15).
+    ///   - transport: HTTP transport, for substituting one in tests.
     public init(
         apiKey: String,
         gl: String? = nil,
@@ -58,13 +59,16 @@ public final class SerperSearchProvider: WebSearchProvider, @unchecked Sendable 
 
     // MARK: - WebSearchProvider
 
-    /// Serper API（Google SERP）で検索を実行する。
+    /// Runs one query against Serper.
+    ///
+    /// Only organic results are returned; answer boxes and ads are ignored. A result without a rank
+    /// gets its position from the response order. This provider does not retry — wrap it in
+    /// `ResilientSearchProvider` for that.
     ///
     /// - Parameters:
-    ///   - query: 検索クエリ
-    ///   - maxResults: 最大結果数（最大 100）
-    /// - Returns: 検索結果の配列
-    /// - Throws: `WebSearchError`
+    ///   - query: Query string.
+    ///   - maxResults: Upper bound on results, clamped to Serper's limit of 100.
+    /// - Throws: `WebSearchError.httpError` for a non-2xx response.
     public func search(query: String, maxResults: Int) async throws -> [WebSearchResult] {
         guard let url = URL(string: "https://google.serper.dev/search") else {
             throw WebSearchError.invalidResponse

@@ -2,12 +2,12 @@ import Foundation
 
 // MARK: - FallbackSearchProvider
 
-/// 複数プロバイダーの自動フォールバックチェーン。
+/// Tries several search providers in order and returns the first non-empty result set.
 ///
-/// プロバイダーを順番に試行し、最初に成功した結果を返す。
-/// 空結果も失敗として扱い、次のプロバイダーに進む。
+/// An empty result set counts as a failure and moves on, so a query with genuinely no hits costs
+/// one call to every provider before it throws.
 ///
-/// ## 使用例
+/// ## Example
 ///
 /// ```swift
 /// let provider = FallbackSearchProvider(providers: [
@@ -23,22 +23,19 @@ public final class FallbackSearchProvider: WebSearchProvider, @unchecked Sendabl
 
     // MARK: - Initialization
 
-    /// FallbackSearchProviderを作成
+    /// Creates a chain.
     ///
-    /// - Parameter providers: 試行順のプロバイダー配列
+    /// - Parameter providers: Providers in the order they should be tried.
     public init(providers: [any WebSearchProvider]) {
         self.providers = providers
     }
 
     // MARK: - WebSearchProvider
 
-    /// プロバイダーを順番に試行し、最初に成功した結果を返す。
+    /// Tries each provider in turn until one returns results.
     ///
-    /// - Parameters:
-    ///   - query: 検索クエリ
-    ///   - maxResults: 最大結果数
-    /// - Returns: 最初に成功したプロバイダーの検索結果
-    /// - Throws: 全プロバイダーが失敗した場合 `WebSearchError.allProvidersFailed`
+    /// - Throws: `WebSearchError.allProvidersFailed`, carrying one error per provider — including a
+    ///   `noResults` entry for each provider that answered with an empty list.
     public func search(query: String, maxResults: Int) async throws -> [WebSearchResult] {
         var errors: [Error] = []
 

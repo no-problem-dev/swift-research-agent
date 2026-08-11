@@ -1,73 +1,83 @@
 # ``ResearchStore``
 
-リサーチセッションで観測した全ソースを記帳・照会するステートレスな台帳層。
+The ledger a research task writes its sources into, and the URL canonicalization that decides when two citations mean the same page.
 
 ## Overview
 
-`ResearchStore` はパッケージの最下位レイヤーだ。UI・LLM・ネットワークに依存せず、
-タスク中に観測した URL・タイトル・取得済み本文の SSOT（Single Source of Truth）を提供する。
+`ResearchStore` is the bottom layer of the package. It depends on nothing — no UI, no LLM, no
+network — and holds the single record of what a task observed: which URLs were seen, which of them
+were actually fetched, and the text of the pages that were.
 
-このモジュールだけをインポートすることで、ツール層（`ResearchAgentTools`）や
-エージェント層（`ResearchAgent`）と分離して `SourceRegistry` を扱える。
-テスト時にモックを差し込む場合や、SPM マルチモジュール構成で依存グラフを
-最小化したい場合に有効だ。
+Import it on its own when you want the ledger without the tool layer (`ResearchAgentTools`) or the
+agent layer (`ResearchAgent`): to write a fake ledger in tests, or to keep a dependency graph small.
 
-### SourceRegistry の役割
+### SourceRegistry
 
-`SourceRegistry` は Swift `actor` として実装されたセッションスコープの台帳だ。
-`ResearchToolKit`（ツール側）と `ResearchAgentExecutor`（検証側）の両方に
-同じインスタンスを渡すことで、ツールが記帳した観測ソースをゲートが照合できる。
+``SourceRegistry`` is an actor scoped to one task. Give the same instance to the tool kit and to the
+executor, or the gate has nothing to match citations against.
 
 ```swift
 import ResearchStore
 
-// セッション開始時に 1 つ作成し、ツールとゲートへ共有注入する
+// One per task, injected into both the tools and the gate
 let registry = SourceRegistry()
 
-// ツールが検索結果を記帳（fetched=false: 引用にはまだ使えない）
+// A tool records a search hit (fetched = false: not citable yet)
 await registry.registerSearchResult(
     url: "https://example.com/article",
-    title: "記事タイトル",
-    snippet: "要約テキスト",
+    title: "Article title",
+    snippet: "Summary text",
     date: "2024-01-01",
     position: 1
 )
 
-// ツールが fetch 成功を記帳（fetched=true: 引用可になる）
+// A tool records a successful fetch (fetched = true: citable)
 await registry.registerFetch(
     url: "https://example.com/article",
-    title: "記事タイトル（確定）",
-    content: "ページの全文テキスト..."
+    title: "Article title, as the page states it",
+    content: "The whole page text..."
 )
 
-// ゲートが引用照合で利用
+// The gate looks a citation up
 let record = await registry.record(citing: "https://example.com/article")
 print(record?.fetched)  // Optional(true)
 ```
 
-### URLNormalization によるゆれの吸収
+Two properties of the ledger are worth knowing before you rely on it:
 
-`URLNormalization.normalize(_:)` は URL の表記ゆれ（トラッキングパラメータ・
-フラグメント・`www.` プレフィックス・末尾スラッシュ等）を畳み込んで
-台帳キーの一意性を保証する。
-`SourceRegistry` はすべての記帳・照会をこの正規化経由で行うため、
-LLM が微妙に異なる表記で URL を引用しても偽陰性が起きない。
+- **A URL that fails to normalize is dropped silently.** Registration returns without recording
+  anything and without an error, so a page that was really fetched can still be missing from the
+  ledger — and a citation of it then reads as fabricated.
+- **Nothing is persisted and nothing is evicted.** The ledger lives as long as the actor. Stored
+  page text is capped per source (200,000 characters by default), but the number of sources is not,
+  so a long-running task grows monotonically.
+
+### URLNormalization
+
+``URLNormalization/normalize(_:)`` folds the spellings that do not change which page is meant —
+tracking parameters, fragment, `www.`, default port, scheme and host case, query order, trailing
+slash — into one ledger key. Every registration and lookup goes through it, so a model that cites a
+URL slightly differently from the one it fetched still matches.
 
 ```swift
 import ResearchStore
 
 let key1 = URLNormalization.normalize("https://www.example.com/page/?utm_source=twitter#section")
 let key2 = URLNormalization.normalize("https://example.com/page/")
-// key1 == key2  → 同一キーに畳み込まれる
+// key1 == key2
 ```
+
+Rewrites that could change the page are deliberately not done: path case is preserved, and nothing
+is redirected or resolved over the network. A different path or query is a different key, and
+therefore a different source.
 
 ## Topics
 
-### ソース台帳
+### The ledger
 
 - ``SourceRegistry``
 - ``SourceRecord``
 
-### URL 正規化
+### URL identity
 
 - ``URLNormalization``

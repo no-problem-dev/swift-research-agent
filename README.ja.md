@@ -1,110 +1,52 @@
----
-title: swift-research-agent README（日本語）
-created: 2026-06-27
-tags: [swift, spm, agent, research, llm]
-status: active
----
-
 # swift-research-agent
 
 [English](./README.md) | 日本語
 
-> 出典検証ゲート付きの Web リサーチエージェント — 検索・取得・引用検証を 3 層構造で提供する Swift Package。
+開いてもいないページをリサーチエージェントに引用させない — 回答は「実際に fetch したもの」の台帳と突き合わされ、通らなければ差し戻される。
 
-LLM エージェントが「記憶や検索スニペットだけに基づいた引用」を生成するのを構造的に防ぐ。
-`web_search` と `fetch` ツールが観測したソースを `SourceRegistry` に記帳し、`ResearchCitationGate` が「fetch 済みページしか引用できない」規約を決定論的に検証する。
-違反があれば是正メッセージを積んで自動再試行し、合格した回答に構造化出典データを添付する。
+![Swift](https://img.shields.io/badge/Swift-6.2-orange.svg)
+![Platforms](https://img.shields.io/badge/Platforms-iOS%2017+%20%7C%20macOS%2014+-blue.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## アーキテクチャ概要
+## 概要
 
-```
-ResearchStore          Layer 0 — ソース台帳（UI / LLM / ネットワーク非依存）
-    └── SourceRegistry     観測した URL・fetch 本文の SSOT（actor）
+Web を検索するエージェントは、検索スニペットから、記憶から、あるいは何も無いところから、平気で出典を
+でっち上げる。このパッケージは `web_search` と `fetch` ツールを与え、触ったソースを全て台帳に記帳させ、
+書き上がった回答を人目に触れる前にその台帳と突き合わせる。
 
-ResearchAgentTools     Layer 1 — Web 調査ツール群
-    ├── ResearchToolKit    web_search / fetch ツールを提供、SourceRegistry に記帳
-    ├── SerperSearchProvider   Google SERP (serper.dev)
-    ├── BraveSearchProvider    Brave Search API
-    ├── FallbackSearchProvider 複数プロバイダーの自動フォールバック
-    └── ResilientSearchProvider レート制限 / サーキットブレーカー / LRU キャッシュ
+出典が 1 つも無い回答はその時点で却下する — URL を供給できるのはツール結果だけなので、1 つ要求することが
+そのまま「実際に見に行くこと」の要求になる。その上で、引用された URL は台帳に存在し、かつ fetch に
+成功していなければならない。検索結果を眺めただけでは足りない。突き合わせは正規化したキーで行うので、
+`www.`・トラッキングパラメータ・フラグメント・末尾スラッシュは同一に畳まれ、パスやクエリが違えば別ページと
+して扱われる。判定は記帳済みの状態だけで完結する — ネットワーク呼び出しも、2 つ目のモデルも要らず、
+同じ文章はいつも同じ結果になる。
 
-ResearchAgent          Layer 2 — エージェント組立
-    ├── ResearchAgentExecutor  AgentLoop + 出典検証リトライ + artifact 出力
-    ├── ResearchCitationGate   fetch 済み確認・URL 実在確認の決定論的ゲート
-    └── ResearcherAgent        system prompt / AgentCard の自己記述
-```
+不合格なら、どの引用が駄目だったかをエージェントに伝えて再試行させる（回数は指定可能）。合格すれば、
+出典が構造化メタデータとして回答に同行するので、表示側は参考文献をもう一度導出しなくてよい。
 
-## 提供モジュール
+**「幻覚を防ぐ」と言う前に、限界が 2 つ。** 最後の 1 回はそのまま出る — 再試行の回数を使い切ったら、
+まだ不合格でも回答は返る。`maxRetries: 0` なら検査は一度も走らない。そして検証するのは出どころだけで、
+裏づけではない。fetch 済みのページは、そこに書かれていない主張、矛盾する主張にでも付けられる。
+排除できるのは「このタスクで fetch していない URL の引用」— 学習データから思い出した URL、でっち上げた
+URL、スニペットで見ただけで開いていない URL である。
 
-### `ResearchStore`
+- **検索バックエンドは差し替えられる** — Serper と Brave を同梱。複数を連鎖させれば 1 つ落ちても
+  タスクは終わらない
+- **調子の悪い日は落ちずに劣化する** — リクエストのレート制限、失敗し続ける提供元を叩くのをやめる
+  サーキットブレーカー、上限付きの結果キャッシュ
+- **ツール構成は一度だけ決める** — 同じ設定がツール・システムプロンプト・エージェントの自己紹介を
+  駆動するので、三者がずれようがない
+- **取得先は囲える** — 許可ドメインを限定し、レスポンスサイズに上限をかけられる
 
-ネットワーク・LLM に依存しない純粋なデータ層。タスク中に観測した全ソースを管理する。
-
-| 型 | 役割 |
-|---|---|
-| `SourceRegistry` | 観測ソースの台帳（`actor`）。`registerSearchResult` / `registerFetch` で記帳し、`record(citing:)` / `references(citedURLs:)` で照会する |
-| `SourceRecord` | 1 ソースの記録（URL・タイトル・スニペット・fetch 済みフラグなど）|
-
-### `ResearchAgentTools`
-
-Web 調査ツールと検索プロバイダーを提供する。SourceRegistry への記帳まで担い、引用の検証はしない。
-
-| 型 | 役割 |
-|---|---|
-| `ResearchToolKit` | `web_search` / `fetch` ツールを LLM に提供する `ToolKit`。`SourceRegistry` と共有して記帳する |
-| `ResearchToolID` | ツール ID の列挙（`.webSearch` / `.fetch`）。有効化するツールセットを ToolKit・system prompt・AgentCard で一致させるための SSOT |
-| `WebSearchProvider` | 検索バックエンドの抽象プロトコル |
-| `SerperSearchProvider` | Serper API 経由の Google SERP 検索 |
-| `BraveSearchProvider` | Brave Search API 検索 |
-| `FallbackSearchProvider` | 複数プロバイダーの順番試行チェーン |
-| `ResilientSearchProvider` | レート制限 + サーキットブレーカー + LRU キャッシュを統合したラッパー |
-| `SearchResilienceConfiguration` | レジリエンス設定（RPS・失敗閾値・キャッシュ TTL など）|
-
-### `ResearchAgent`
-
-エージェントの組立と出典検証ロジック。
-
-| 型 | 役割 |
-|---|---|
-| `ResearchAgentExecutor` | `AgentLoop` を回し、`ResearchCitationGate` で回答を検証。違反時は是正メッセージを積んで再試行（上限 `maxRetries`）。合格した回答に `research.references` メタデータを添付する |
-| `ResearchCitationGate` | 「出典 URL が台帳に存在し fetch 済みか」を決定論的に検証。ネットワーク・LLM 不要 |
-| `ResearcherAgent` | system prompt / AgentCard の自己記述。有効ツール構成に応じて内容を剪定する |
-
-## インストール
-
-### Swift Package Manager
-
-`Package.swift` の `dependencies` に追加:
-
-```swift
-.package(url: "https://github.com/no-problem-dev/swift-research-agent.git", .upToNextMinor(from: "0.1.0"))
-```
-
-使用するターゲットに追加:
-
-```swift
-.target(
-    name: "MyApp",
-    dependencies: [
-        .product(name: "ResearchAgent", package: "swift-research-agent"),
-        .product(name: "ResearchAgentTools", package: "swift-research-agent"),
-        .product(name: "ResearchStore", package: "swift-research-agent"),
-    ]
-)
-```
-
-## 使用例
-
-### 基本: ResearchToolKit の組み立て
+## クイックスタート
 
 ```swift
 import ResearchStore
 import ResearchAgentTools
 
-// SourceRegistry はセッションスコープの actor — ToolKit とゲートで共有する
+// セッション単位の台帳を 1 つ。ツールとゲートで共有する
 let registry = SourceRegistry()
 
-// Serper プロバイダー付き（レジリエンスあり）
 let toolKit = ResearchToolKit.serper(
     registry: registry,
     apiKey: "YOUR_SERPER_API_KEY",
@@ -112,183 +54,57 @@ let toolKit = ResearchToolKit.serper(
     hl: "ja"
 )
 
-// 利用可能なツール ID を確認
 print(toolKit.availableToolIDs)  // [.webSearch, .fetch]
 ```
 
-### 検索プロバイダーのフォールバックチェーン
+エージェントを丸ごと動かさずに、回答だけを検証する:
 
 ```swift
-import ResearchAgentTools
-
-// Brave が失敗したら Serper にフォールバック
-let provider = FallbackSearchProvider(providers: [
-    BraveSearchProvider(apiKey: "BRAVE_KEY", searchLang: "ja", country: "JP"),
-    SerperSearchProvider(apiKey: "SERPER_KEY", gl: "jp", hl: "ja"),
-])
-
-let toolKit = ResearchToolKit(registry: registry, searchProvider: provider)
-```
-
-### レジリエンス設定のカスタマイズ
-
-```swift
-import ResearchAgentTools
-
-let resilience = SearchResilienceConfiguration(
-    maxRequestsPerSecond: 2.0,   // レート制限: 2 req/sec
-    failureThreshold: 3,          // 3 回失敗でサーキットブレーカー open
-    resetTimeout: 30,             // 30 秒後に half-open
-    cacheTTL: 600,                // 10 分キャッシュ
-    maxCacheEntries: 200,
-    maxRetries: 2
-)
-
-let toolKit = ResearchToolKit.serper(
-    registry: registry,
-    apiKey: "YOUR_API_KEY",
-    resilience: resilience
-)
-```
-
-### ResearchAgentExecutor の組み立て（swift-agent-runtime 連携）
-
-```swift
-import ResearchStore
-import ResearchAgentTools
-import ResearchAgent
-import AgentRuntime
-import LLMClient
-
-let registry = SourceRegistry()
-let toolKit = ResearchToolKit.serper(registry: registry, apiKey: "SERPER_KEY")
-
-// ツール構成（有効化するツール ID を 1 箇所で決めて全層に反映）
-let enabledTools: Set<ResearchToolID> = ResearchToolID.allTools
-
-// ToolSet 構築
-let toolSet = ToolSet { toolKit.tools(enabled: enabledTools) }
-
-// executor 構築
-let executor = ResearchAgentExecutor(
-    client: myLLMClient,
-    model: myModel,
-    tools: toolSet,
-    systemPrompt: ResearcherAgent.systemPrompt(
-        outputConstraint: "Reply concisely in Japanese.",
-        tools: enabledTools
-    ),
-    maxSteps: 16,
-    registry: registry,
-    maxRetries: 2,
-    cachePolicy: .implicit,
-    history: myHistoryStore
-)
-```
-
-### ResearchCitationGate の単体検証
-
-```swift
-import ResearchStore
 import ResearchAgent
 
-let registry = SourceRegistry()
+await registry.registerFetch(url: "https://example.com/article", title: "Example", content: "...")
 
-// ツールが fetch 成功を記帳した後
-await registry.registerFetch(
-    url: "https://example.com/article",
-    title: "Example Article",
-    content: "..."
-)
-
-// 回答テキストを検証
 let issues = await ResearchCitationGate.validate(
-    text: "詳細は https://example.com/article を参照。",
+    text: "See https://example.com/article for details.",
     registry: registry
 )
-
-if issues.isEmpty {
-    print("出典検証 OK")
-} else {
-    // 是正メッセージを生成して LLM に再入力
-    let corrective = ResearchCitationGate.corrective(issues: issues)
-    print(corrective)
+if !issues.isEmpty {
+    let corrective = ResearchCitationGate.corrective(issues: issues)  // モデルに差し戻す
 }
 ```
 
-### Artifact から References を取り出す
+## ドキュメント
+
+[**ResearchAgent**](https://no-problem-dev.github.io/swift-research-agent/documentation/researchagent/) —
+エージェントの組み立て、引用ゲート、再試行ループ。
+[Getting Started](https://no-problem-dev.github.io/swift-research-agent/documentation/researchagent/gettingstarted/) を含む。
+
+[**ResearchAgentTools**](https://no-problem-dev.github.io/swift-research-agent/documentation/researchagenttools/) —
+ツール、検索プロバイダ、失敗したときに何が起きるか。
+
+[**ResearchStore**](https://no-problem-dev.github.io/swift-research-agent/documentation/researchstore/) —
+ゲートが読む出典台帳。
+
+## インストール
 
 ```swift
-import ResearchAgent
-import ResearchStore
-
-// ResearchAgentExecutor が合格した回答に添付するキー
-let key = ResearchAgentExecutor<MyClient>.referencesMetadataKey  // "research.references"
-
-if let json = artifact.metadata?[key],
-   case .string(let jsonString) = json,
-   let data = jsonString.data(using: .utf8),
-   let references = try? JSONDecoder().decode([SourceRecord].self, from: data) {
-    for ref in references {
-        print("\(ref.title ?? ref.url)  fetched=\(ref.fetched)")
-    }
-}
+// Package.swift
+dependencies: [
+    .package(url: "https://github.com/no-problem-dev/swift-research-agent.git", .upToNextMinor(from: "0.1.0"))
+]
 ```
-
-## 出典検証の仕組み
-
-`ResearchCitationGate` は 3 つの規約を順に検証する。
-
-| 規約 | 内容 |
-|---|---|
-| 出典必須 | 回答に URL が 1 件以上引用されていること（ツールを使わない回答の排除） |
-| 実在 | 引用 URL が `SourceRegistry` に記帳されていること（記憶・捏造 URL の排除）|
-| 取得済み | 引用 URL が `fetch` 成功済みであること（スニペットのみを根拠にした引用の排除） |
-
-URL は正規化（トラッキングパラメータ・フラグメント・www 畳み込み）して照合するため、表記ゆれによる偽陰性が起きない。
-検証はネットワークも LLM も使わない決定論的処理。
-
-## エラーハンドリング
 
 ```swift
-import ResearchAgentTools
-
-do {
-    let results = try await provider.search(query: "Swift 6", maxResults: 5)
-} catch WebSearchError.providerNotConfigured {
-    // ResearchToolKit に searchProvider が注入されていない
-} catch WebSearchError.circuitBreakerOpen {
-    // 連続失敗によりサーキットブレーカーが open 状態
-} catch WebSearchError.httpError(let statusCode) {
-    // HTTP エラー（429: レート制限, 403: アクセス拒否 など）
-}
-
-do {
-    // fetch ツールの内部エラー
-} catch ResearchToolError.domainNotAllowed(let domain, let allowed) {
-    // allowedDomains を設定した場合のドメイン制限違反
-} catch ResearchToolError.contentTooLarge(let size, let maxSize) {
-    // PDF・バイナリなど変換不可コンテンツ
-}
+.product(name: "ResearchAgent",      package: "swift-research-agent"),
+.product(name: "ResearchAgentTools", package: "swift-research-agent"),
+.product(name: "ResearchStore",      package: "swift-research-agent"),
 ```
 
-## 対応プラットフォーム
+## 要件
 
-| プラットフォーム | 最小バージョン |
-|---|---|
-| macOS | 14.0+ |
-| iOS | 17.0+ |
+- iOS 17.0+ / macOS 14.0+
+- Swift 6.2+
 
-Swift 6 / strict concurrency 対応（`SourceRegistry` / `RateLimiter` / `CircuitBreaker` / `SearchResultCache` はすべて `actor`）。
+## ライセンス
 
-## 関連パッケージ
-
-| パッケージ | 役割 |
-|---|---|
-| [swift-llm-client](https://github.com/no-problem-dev/swift-llm-client) | `Tool` / `ToolSet` / `SystemPrompt` / `AgentCapableClient` の定義 |
-| [swift-agent-runtime](https://github.com/no-problem-dev/swift-agent-runtime) | `AgentExecutor` / `AgentLoop` / `TaskUpdater` の実行環境 |
-| [swift-http-transport](https://github.com/no-problem-dev/swift-http-transport) | HTTP トランスポート抽象（テスト時にモック差し替え可） |
-
----
-
-最終更新: 2026-06-29
+MIT — [LICENSE](LICENSE) を参照。

@@ -21,11 +21,11 @@ struct ResearchToolKitTests {
 
     @Test func toolSelectionKeepsCoreAndDropsDisabled() {
         let kit = ResearchToolKit(registry: SourceRegistry(), searchProvider: StubSearchProvider())
-        // web_search を無効化 → fetch だけ残る。
+        // Disabling web_search leaves fetch.
         #expect(kit.tools(enabled: [.fetch]).map(\.toolName) == ["fetch"])
-        // 全部オフを指定してもコア（fetch）は残る。
+        // Even with everything switched off, the core tool stays.
         #expect(kit.tools(enabled: []).map(\.toolName) == ["fetch"])
-        // プロバイダ未構成なら enabled に含めても web_search は出ない。
+        // Without a provider, web_search is absent even when enabled.
         let bare = ResearchToolKit(registry: SourceRegistry())
         #expect(bare.tools(enabled: [.webSearch, .fetch]).map(\.toolName) == ["fetch"])
     }

@@ -2,44 +2,45 @@ import Foundation
 
 // MARK: - WebSearchProvider Protocol
 
-/// 検索エンジンバックエンドを差し替え可能にする抽象プロトコル。
+/// A search backend the tool kit can call.
 ///
-/// ## 使用例
+/// Implement it to plug in an engine this package does not ship. Implementations are expected to
+/// throw `WebSearchError` and to honour `maxResults`; neither is enforced.
+///
+/// ## Example
 ///
 /// ```swift
 /// let provider = SerperSearchProvider(apiKey: "YOUR_API_KEY", gl: "jp", hl: "ja")
 /// let results = try await provider.search(query: "Swift concurrency", maxResults: 5)
 /// ```
 public protocol WebSearchProvider: Sendable {
-    /// 検索を実行する。
+    /// Runs one query.
     ///
     /// - Parameters:
-    ///   - query: 検索クエリ
-    ///   - maxResults: 最大結果数
-    /// - Returns: 検索結果の配列
+    ///   - query: Query string, passed to the engine unmodified.
+    ///   - maxResults: Upper bound on results; providers clamp it to their own API limit.
+    /// - Returns: Results in the engine's ranking order.
     func search(query: String, maxResults: Int) async throws -> [WebSearchResult]
 }
 
 // MARK: - WebSearchResult
 
-/// Web検索の結果
+/// One search hit, as the engine ranked it.
 ///
-/// プロバイダーが返すメタデータ（日付・順位）は落とさず保持する。
-/// 出典の鮮度・信頼度判断の素材になる。
+/// `date` and `position` are carried through when a provider reports them, since freshness and
+/// rank are how a reader judges a source. `BraveSearchProvider` reports neither, so results from
+/// it always leave both `nil`.
 public struct WebSearchResult: Codable, Sendable {
-    /// ページタイトル
     public let title: String
 
-    /// ページURL
     public let url: String
 
-    /// 検索結果のスニペット
     public let snippet: String
 
-    /// プロバイダーが返した日付文字列（公開日など）
+    /// Publication date as the provider spelled it; unparsed, and formatted differently per engine.
     public let date: String?
 
-    /// 検索結果での順位（1 始まり）
+    /// Rank in the result list, 1-based; `nil` when the provider reports no rank.
     public let position: Int?
 
     public init(title: String, url: String, snippet: String, date: String? = nil, position: Int? = nil) {
@@ -53,10 +54,11 @@ public struct WebSearchResult: Codable, Sendable {
 
 // MARK: - UnconfiguredSearchProvider
 
-/// APIキー未設定時のフォールバックプロバイダー。
+/// Stand-in provider whose every search fails with instructions for configuring a real one.
 ///
-/// 検索実行時に設定方法を案内するエラーを返す。
-/// ビルドは通るが、実行時にユーザーに設定を促す。
+/// Lets a host wire search up before it has an API key, turning the missing key into a runtime
+/// message instead of a build error. The tool kit does not use it: passing `nil` there drops the
+/// `web_search` tool entirely, which is usually what you want.
 public struct UnconfiguredSearchProvider: WebSearchProvider {
     public init() {}
 
@@ -67,7 +69,10 @@ public struct UnconfiguredSearchProvider: WebSearchProvider {
 
 // MARK: - Errors
 
-/// Web検索のエラー
+/// Failures raised by search providers and by the resilience wrappers around them.
+///
+/// Messages are addressed to the model, so a failed search suggests rephrasing or waiting rather
+/// than ending the task.
 public enum WebSearchError: Error, LocalizedError {
     case invalidQuery(String)
     case invalidResponse

@@ -4,12 +4,12 @@ import LLMTool
 
 // MARK: - ToolKit Protocol
 
-/// 関連するツールをグループ化するプロトコル。
+/// A named group of tools handed to an agent together.
 ///
-/// ToolKit は複数の関連ツールを束ねて提供する。
-/// 外部 MCP サーバーと同等の機能を Swift 内で直接実装する際に使う。
+/// Implement it to offer a set of related tools in-process, instead of running an external MCP
+/// server to provide them.
 ///
-/// ## 実装例
+/// ## Example
 ///
 /// ```swift
 /// public struct MyToolKit: ToolKit {
@@ -21,34 +21,27 @@ import LLMTool
 /// }
 /// ```
 public protocol ToolKit: Sendable {
-    /// ToolKit の識別名。
+    /// Identifier for logs and debugging.
     ///
-    /// ログやデバッグ時の識別に使う。
+    /// The model never sees it, and it does not namespace the tool names: two kits that both
+    /// provide a `fetch` tool collide.
     var name: String { get }
 
-    /// この ToolKit が提供するツールの配列。
-    ///
-    /// ToolSet に追加される際、この配列のすべてのツールが含まれる。
+    /// Every tool this kit provides; adding the kit to a tool set adds all of them.
     var tools: [any Tool] { get }
 }
 
 // MARK: - ToolKit Default Extensions
 
 extension ToolKit {
-    /// ツール数
     public var toolCount: Int {
         tools.count
     }
 
-    /// ツール名のリスト
     public var toolNames: [String] {
         tools.map { $0.toolName }
     }
 
-    /// 名前でツールを検索
-    ///
-    /// - Parameter name: ツール名
-    /// - Returns: 見つかったツール、またはnil
     public func tool(named name: String) -> (any Tool)? {
         tools.first { $0.toolName == name }
     }
@@ -56,33 +49,34 @@ extension ToolKit {
 
 // MARK: - BuiltInTool
 
-/// ToolKit 内で使う個別ツールの実装型。
+/// A tool defined by a closure rather than by a type of its own.
 ///
-/// name・description・inputSchema・annotations を保持し、クロージャで execute を実装する。
+/// Holds the declaration the model sees — name, description, input schema, annotations — and runs
+/// the closure when the model calls it.
 public struct BuiltInTool: Tool, Sendable {
     // MARK: - Properties
 
-    /// ツール識別名。LLM へ渡す `name` フィールドに使われる。
+    /// Name sent to the model in the tool declaration, and the name it calls back with.
     public let toolName: String
-    /// ツールの説明。LLM がツール選択時に参照する。
+    /// Text the model reads when deciding whether to call this tool.
     public let toolDescription: String
-    /// 入力引数の JSON スキーマ。LLM が引数を生成する際の型定義。
+    /// Schema the model generates its arguments against.
     public let inputSchema: JSONSchema
-    /// ツールのメタ情報（冪等性・副作用など）。`ToolAnnotations()` で全デフォルト。
+    /// Behaviour hints such as read-only or open-world; all unspecified by default.
     public let annotations: ToolAnnotations
 
     private let executeHandler: @Sendable (Data) async throws -> ToolResult
 
     // MARK: - Initialization
 
-    /// BuiltInTool を作成する。
+    /// Creates a tool from a handler closure.
     ///
     /// - Parameters:
-    ///   - name: ツール名
-    ///   - description: ツールの説明
-    ///   - inputSchema: 入力スキーマ
-    ///   - annotations: ツールアノテーション
-    ///   - handler: 実行ハンドラー
+    ///   - name: Name the model calls. Keep it stable; it appears in every declaration.
+    ///   - description: Text the model uses to decide when to call this tool.
+    ///   - inputSchema: Schema the model generates arguments against.
+    ///   - annotations: Behaviour hints; all unspecified by default.
+    ///   - handler: Runs on call, receiving the raw argument JSON.
     public init(
         name: String,
         description: String,
@@ -99,11 +93,11 @@ public struct BuiltInTool: Tool, Sendable {
 
     // MARK: - Tool Protocol
 
-    /// ツールを実行する。
+    /// Runs the handler with the model's raw arguments.
     ///
-    /// - Parameter argumentsData: LLM から渡された引数の JSON データ。
-    /// - Returns: ツールの実行結果。
-    /// - Throws: ハンドラーが投げるエラーをそのまま伝播する。
+    /// - Parameter argumentsData: Arguments as JSON, exactly as the model produced them; decoding
+    ///   them is the handler's job.
+    /// - Throws: Whatever the handler throws, unchanged.
     public func execute(with argumentsData: Data) async throws -> ToolResult {
         try await executeHandler(argumentsData)
     }

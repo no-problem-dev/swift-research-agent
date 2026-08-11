@@ -1,19 +1,24 @@
 import Foundation
 
-/// 引用照合のための URL 正規化。
+/// URL canonicalization that decides when two citations point at the same page.
 ///
-/// 同一ページを指す表記ゆれ（トラッキングパラメータ・フラグメント・www・末尾スラッシュ等）を
-/// 畳み込んで台帳キーの一意性を保証する。node-DeepResearch の `normalizeUrl` を参考に、
-/// 変換は決定的・保守的（意味を変えうる書き換えはしない）に留める。
+/// Folds spellings that do not change which page is meant — tracking parameters, fragment,
+/// `www.`, default port, scheme and host case, query order, trailing slash — into one ledger key,
+/// so a citation written slightly differently from the fetched URL still matches. Rewrites that
+/// could change the page are deliberately left alone: path case is preserved, and nothing is
+/// resolved or redirected over the network.
 public enum URLNormalization {
-    /// 除去するトラッキング系クエリパラメータ。
+    /// Query parameters treated as tracking noise; `utm_*` is matched by prefix instead.
     private static let trackingParameters: Set<String> = [
         "gclid", "fbclid", "yclid", "msclkid", "dclid", "igshid", "twclid",
         "mc_cid", "mc_eid", "_ga", "_gl", "ref_src", "ref_url", "cmpid",
         "spm", "share_id", "xtor",
     ]
 
-    /// URL 文字列を正規化する。http(s) 以外・パース不能は nil。
+    /// Canonicalizes a URL into a ledger key.
+    ///
+    /// - Returns: `nil` for anything that is not parsable http or https — callers treat that as
+    ///   "not a source" rather than as an error.
     public static func normalize(_ urlString: String) -> String? {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
@@ -26,7 +31,7 @@ public enum URLNormalization {
 
         components.scheme = scheme
 
-        // www. と既定ポートの除去
+        // Drop www. and the scheme's default port
         if host.hasPrefix("www."), host.count > 4 {
             host = String(host.dropFirst(4))
         }
@@ -36,10 +41,10 @@ public enum URLNormalization {
             components.port = nil
         }
 
-        // フラグメントはページ内位置なので引用同一性に含めない
+        // A fragment only selects a position inside the page, so it is not part of page identity
         components.fragment = nil
 
-        // トラッキングパラメータ除去 + 残りをソート（順序ゆれの畳み込み）
+        // Strip tracking parameters, then sort the rest so query order stops mattering
         if let items = components.queryItems {
             let kept = items
                 .filter { item in
@@ -50,7 +55,7 @@ public enum URLNormalization {
             components.queryItems = kept.isEmpty ? nil : kept
         }
 
-        // 末尾スラッシュの畳み込み（ルートパスは除く）
+        // Fold the trailing slash, except on the root path
         if components.path.count > 1, components.path.hasSuffix("/") {
             components.path = String(components.path.dropLast())
         }

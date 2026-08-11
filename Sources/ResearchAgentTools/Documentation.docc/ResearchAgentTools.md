@@ -1,14 +1,20 @@
 # ``ResearchAgentTools``
 
-`web_search` / `fetch` の 2 ツールと複数の検索プロバイダーを提供するツール層。観測した URL と取得済み本文を `SourceRegistry` へ記帳する。
+The `web_search` and `fetch` tools, the search backends behind them, and the bookkeeping that makes citations checkable.
 
 ## Overview
 
-`ResearchAgentTools` はパッケージの Layer 1 だ。Web 調査ツール群（`web_search` / `fetch`）を LLM ツールとして組み立て、取得結果を `SourceRegistry`（`ResearchStore` モジュール）へ記帳するまでを担う。引用の検証はゲート側（`ResearchAgent` モジュール）が行い、このモジュールは素材の提供と記帳に責務を限定する。
+`ResearchAgentTools` is the middle layer of the package. It builds the two tools an LLM calls during
+research and records what they observe in a `SourceRegistry`: search hits as
+not-yet-fetched, successful fetches as citable with the page text stored.
 
-### ResearchToolKit の使い方
+That is where its responsibility stops. Deciding whether an answer's citations are acceptable
+belongs to the gate in `ResearchAgent`; this module only supplies the material and the record.
 
-`ResearchToolKit` は `SourceRegistry` と検索プロバイダーを受け取って `web_search` / `fetch` ツールを提供する。Serper（Google SERP）を使う場合は便利なファクトリメソッドを使う。
+### ResearchToolKit
+
+``ResearchToolKit`` takes the ledger and a search provider, and offers the tools. For Serper
+(Google's result page) there is a factory that also wraps the provider in the resilience layers.
 
 ```swift
 import ResearchStore
@@ -16,7 +22,7 @@ import ResearchAgentTools
 
 let registry = SourceRegistry()
 
-// Serper ファクトリ（レジリエンスデフォルト付き）
+// Serper, with the default cache, rate limit, breaker and retry
 let toolKit = ResearchToolKit.serper(
     registry: registry,
     apiKey: "YOUR_SERPER_KEY",
@@ -25,7 +31,7 @@ let toolKit = ResearchToolKit.serper(
 )
 ```
 
-Brave Search や独自プロバイダーを使う場合はイニシャライザに直接渡す。
+Brave Search, or any backend of your own, goes to the initializer directly.
 
 ```swift
 let toolKit = ResearchToolKit(
@@ -34,34 +40,51 @@ let toolKit = ResearchToolKit(
 )
 ```
 
-### ツール ID による選択的有効化
+### What the tools do
 
-`ResearchToolID` でツールの有効・無効を制御できる。
-`fetch` は `isCore == true` のため常に含まれる（無効化不可）。
-`web_search` はプロバイダー未設定の場合 `enabled` に指定しても提供されない。
+`fetch` downloads a URL with a browser user agent, extracts the readable content as Markdown, stores
+the **whole** extracted text in the ledger, and returns a slice of it. Long pages are read by calling
+it again with `start_index`; every slice comes from the same stored text, so one fetch is enough to
+make the page citable. Failures throw — a non-2xx status, a blocked domain, an unsupported scheme, an
+oversized binary body — and each error message tells the model what to try instead. Nothing is
+retried at this layer, and a URL that could not be fetched is not in the ledger, so it cannot be
+cited.
+
+`web_search` runs the query, returns titles, URLs and snippets, and records each hit as
+not-yet-fetched. Its tool description says outright that snippets are leads rather than facts,
+because the gate will reject a citation backed only by one.
+
+### Selective enabling
+
+``ResearchToolID`` names the tools so that the kit, the system prompt and the delegation description
+can be built from one set and cannot drift apart.
 
 ```swift
-// fetch のみ（search プロバイダー不要の構成）
+// fetch only — no search provider needed
 let fetchOnlyTools = toolKit.tools(enabled: [.fetch])
 
-// 全ツール（デフォルト）
+// every tool (the default)
 let allTools = toolKit.tools(enabled: ResearchToolID.allTools)
 ```
 
-### 検索プロバイダーの階層
+`fetch` is a core tool and survives `enabled: []`: it is the only path that can mark a URL as
+fetched, so without it no source could ever be citable. `web_search` is dropped whenever it is not
+enabled **or** no provider is configured — ask ``ResearchToolKit/availableToolIDs`` to tell "switched
+off" from "cannot be switched on".
 
-`WebSearchProvider` プロトコルを実装することで独自バックエンドを差し込める。
-`ResilientSearchProvider` でラップすることで、キャッシュ・レートリミット・
-サーキットブレーカー・リトライを一括で付与できる。
+### Search providers
+
+Implement ``WebSearchProvider`` to plug in a backend the package does not ship. Two wrappers compose
+on top of any provider, including your own.
 
 ```swift
 let brave = BraveSearchProvider(apiKey: "BRAVE_KEY")
 let serper = SerperSearchProvider(apiKey: "SERPER_KEY")
 
-// 複数プロバイダーを優先順でフォールバック
+// Try providers in order; an empty result set counts as a failure and moves on
 let fallback = FallbackSearchProvider(providers: [brave, serper])
 
-// レジリエンス機能を付与してラップ
+// Cache, rate limit, circuit breaker and retries
 let resilient = ResilientSearchProvider(
     provider: fallback,
     configuration: SearchResilienceConfiguration(
@@ -77,16 +100,21 @@ let resilient = ResilientSearchProvider(
 let toolKit = ResearchToolKit(registry: registry, searchProvider: resilient)
 ```
 
+``ResilientSearchProvider`` consults its cache before the breaker, so repeated queries keep answering
+while the breaker is open. Every failed attempt, retries included, counts toward opening it.
+``BraveSearchProvider`` reports neither a date nor a rank, so sources found through it reach the
+ledger without those two signals.
+
 ## Topics
 
-### ツールキット
+### Tool kit
 
 - ``ResearchToolKit``
 - ``ResearchToolID``
 - ``ToolKit``
 - ``BuiltInTool``
 
-### 検索プロバイダー
+### Search providers
 
 - ``WebSearchProvider``
 - ``WebSearchResult``
@@ -96,20 +124,20 @@ let toolKit = ResearchToolKit(registry: registry, searchProvider: resilient)
 - ``ResilientSearchProvider``
 - ``UnconfiguredSearchProvider``
 
-### レジリエンス
+### Resilience
 
 - ``SearchResilienceConfiguration``
 - ``RateLimiter``
 - ``CircuitBreaker``
 - ``SearchResultCache``
 
-### コンテンツ抽出
+### Content extraction
 
 - ``WebContentExtractor``
 - ``ExtractedContent``
 - ``SwiftSoupContentExtractor``
 
-### エラー
+### Errors
 
 - ``ResearchToolError``
 - ``WebSearchError``

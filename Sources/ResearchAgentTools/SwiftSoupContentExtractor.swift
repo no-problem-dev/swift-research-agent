@@ -3,14 +3,13 @@ import SwiftSoup
 
 // MARK: - SwiftSoupContentExtractor
 
-/// SwiftSoup を使用した Web コンテンツ抽出のデフォルト実装。
+/// Default extraction: strip the page chrome, score the DOM for the body, convert it to Markdown.
 ///
-/// 3 つの主要な責務を持つ：
-/// 1. **DOM クリーニング** — 不要な要素（script, style, nav 等）を除去
-/// 2. **Readability スコアリング** — 本文コンテンツの自動検出
-/// 3. **Markdown 変換** — DOM を再帰的に Markdown へ変換
+/// The scoring pass takes `<article>` or `<main>` when either exists, otherwise the highest
+/// scoring block, and falls back to the whole `<body>` when nothing scores well — so a page it
+/// cannot read yields chrome-free noise rather than nothing at all.
 ///
-/// ## 使用例
+/// ## Example
 ///
 /// ```swift
 /// let extractor = SwiftSoupContentExtractor()
@@ -23,31 +22,35 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
 
     // MARK: - WebContentExtractor
 
-    /// HTML 文字列からコンテンツを抽出し Markdown 形式で返す。
+    /// Extracts a page's title, main content as Markdown, and metadata.
     ///
-    /// DOM クリーニング → Readability スコアリング → Markdown 変換 の順で処理する。
+    /// Title and metadata are read before cleaning, so removing `<header>` and friends cannot lose
+    /// them. Links are absolutized against `url`; `data:`, `javascript:` and in-page anchors are
+    /// dropped instead.
+    ///
     /// - Parameters:
-    ///   - html: 生の HTML 文字列
-    ///   - url: ページの URL（相対リンクの絶対化に使う）
-    /// - Returns: 抽出されたコンテンツ（タイトル・Markdown 本文・メタデータ）
-    /// - Throws: HTML に `<body>` 要素が存在しない場合にエラーをスロー
+    ///   - html: Raw HTML.
+    ///   - url: Page URL, used to absolutize relative links.
+    /// - Returns: Title, Markdown body and page metadata.
+    /// - Throws: Errors from the HTML parser. The document-without-a-body case is effectively
+    ///   unreachable, since the parser synthesizes one.
     public func extract(html: String, url: URL) throws -> ExtractedContent {
         let doc = try SwiftSoup.parse(html, url.absoluteString)
 
-        // メタデータ抽出（クリーニング前に実施）
+        // Metadata first: cleaning removes the elements it lives in
         let metadata = Self.extractMetadata(from: doc)
         let title = Self.extractTitle(from: doc, metadata: metadata)
 
-        // DOMクリーニング
+        // Clean the DOM
         Self.cleanDOM(doc)
 
-        // Readabilityスコアリングで本文要素を特定
+        // Score the remaining blocks to find the body
         let contentElement = try Self.findMainContent(in: doc)
 
-        // Markdown変換
+        // Convert to Markdown
         let markdown = Self.convertToMarkdown(element: contentElement, baseURL: url)
 
-        // 後処理
+        // Tidy up
         let cleaned = Self.postProcess(markdown)
 
         return ExtractedContent(title: title, content: cleaned, metadata: metadata)
@@ -55,7 +58,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
 
     // MARK: - (A) DOM Cleaning
 
-    /// 不要な要素を除去
+    /// Removes what is never body text: scripts, styles, chrome, forms, controls, comments.
     private static func cleanDOM(_ doc: Document) {
         let selectorsToRemove = [
             "script", "style", "nav", "footer", "aside", "header",
@@ -66,13 +69,13 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
         if let elements = try? doc.select(selector) {
             _ = try? elements.remove()
         }
-        // コメントノードも除去
+        // Comment nodes too
         if let body = doc.body() {
             removeComments(from: body)
         }
     }
 
-    /// HTMLコメントを再帰的に除去
+    /// Removes comment nodes throughout a subtree.
     private static func removeComments(from node: Node) {
         var i = 0
         while i < node.childNodeSize() {
@@ -88,9 +91,12 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
 
     // MARK: - (B) Readability Scoring
 
-    /// 本文コンテンツ要素を特定
+    /// Picks the element holding the body text.
+    ///
+    /// Prefers `<article>`, then `<main>`, then the highest scoring block, and settles for the
+    /// whole `<body>` when nothing scores above the threshold.
     private static func findMainContent(in doc: Document) throws -> Element {
-        // 1. <article> or <main> があれば即採用
+        // 1. Take <article> or <main> as-is when either has text
         if let article = try? doc.select("article").first(), let text = try? article.text(), !text.isEmpty {
             return article
         }
@@ -98,7 +104,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
             return main
         }
 
-        // 2. 全 div/section/td/pre をスキャンしスコア付与
+        // 2. Score every div, section, td and pre
         guard let body = doc.body() else {
             throw SwiftSoupExtractorError.noBody
         }
@@ -115,7 +121,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
             }
         }
 
-        // 3. 最高スコア > 20 の要素を本文、なければ body フォールバック
+        // 3. Accept the best block only if it clears the threshold, else fall back to body
         if bestScore > 20, let best = bestElement {
             return best
         }
@@ -123,11 +129,14 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
         return body
     }
 
-    /// 要素のReadabilityスコアを計算
+    /// Scores how much a block looks like body text.
+    ///
+    /// Class and id wording, own-text length, direct paragraph children and comma count add; link
+    /// density above half and chrome-sounding names subtract.
     private static func scoreElement(_ element: Element) -> Int {
         var score = 0
 
-        // クラス/IDのセマンティック判定
+        // What the class and id call this block
         let classId = ((try? element.className()) ?? "") + " " + (element.id())
         let classIdLower = classId.lowercased()
 
@@ -155,7 +164,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
             }
         }
 
-        // テキスト長ボーナス
+        // Longer own text scores higher
         let textLength = element.ownText().count
         if textLength > 500 {
             score += 30
@@ -163,11 +172,11 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
             score += 20
         }
 
-        // 直接 <p> 子要素数
+        // Direct <p> children
         let directParagraphs = element.children().array().filter { $0.tagName() == "p" }
         score += directParagraphs.count * 10
 
-        // リンク密度ペナルティ
+        // Mostly-links blocks are navigation
         let fullText = (try? element.text()) ?? ""
         let linkText = (try? element.select("a").text()) ?? ""
         if !fullText.isEmpty {
@@ -177,7 +186,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
             }
         }
 
-        // カンマ/読点の数
+        // Commas, Western and CJK, as a proxy for prose
         let commaCount = fullText.filter { $0 == "," || $0 == "\u{3001}" }.count
         score += commaCount * 3
 
@@ -186,14 +195,14 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
 
     // MARK: - (C) Markdown Conversion
 
-    /// DOM要素をMarkdownに変換
+    /// Converts an element tree into Markdown lines.
     private static func convertToMarkdown(element: Element, baseURL: URL) -> String {
         var lines: [String] = []
         walkNode(element, baseURL: baseURL, lines: &lines, listDepth: 0, listIndex: nil)
         return lines.joined(separator: "\n")
     }
 
-    /// ノードを再帰的にウォーク
+    /// Walks a node, appending its Markdown lines.
     private static func walkNode(
         _ node: Node,
         baseURL: URL,
@@ -212,7 +221,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
         }
 
         guard let element = node as? Element else {
-            // 他のノードタイプは子をウォーク
+            // Any other node type: walk the children
             for child in node.getChildNodes() {
                 walkNode(child, baseURL: baseURL, lines: &lines, listDepth: listDepth, listIndex: listIndex)
             }
@@ -222,7 +231,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
         let tag = element.tagName().lowercased()
 
         switch tag {
-        // 見出し
+        // Headings
         case "h1", "h2", "h3", "h4", "h5", "h6":
             let level = Int(String(tag.last!))!
             let prefix = String(repeating: "#", count: level)
@@ -233,7 +242,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
                 lines.append("")
             }
 
-        // リンク
+        // Links
         case "a":
             let text = (try? element.text()) ?? ""
             let href = resolveURL(try? element.attr("href"), base: baseURL)
@@ -243,7 +252,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
                 lines.append(text)
             }
 
-        // 画像
+        // Images
         case "img":
             let alt = (try? element.attr("alt")) ?? ""
             let src = resolveURL(try? element.attr("src"), base: baseURL)
@@ -251,7 +260,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
                 lines.append("![\(alt)](\(src))")
             }
 
-        // 強調
+        // Emphasis
         case "strong", "b":
             let text = (try? element.text()) ?? ""
             if !text.isEmpty {
@@ -264,9 +273,9 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
                 lines.append("*\(text)*")
             }
 
-        // インラインコード
+        // Code
         case "code":
-            // 親が <pre> の場合はブロックコードとして処理しない（pre側で処理）
+            // Inside <pre> this is a fenced block; the pre case delegates here to build it
             if element.parent()?.tagName().lowercased() == "pre" {
                 let text = (try? element.text()) ?? ""
                 let lang = (try? element.className()) ?? ""
@@ -284,9 +293,9 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
                 }
             }
 
-        // コードブロック
+        // Preformatted blocks
         case "pre":
-            // <pre><code>...</code></pre> パターンを検出
+            // Detect the <pre><code>...</code></pre> pattern
             if let codeChild = element.children().array().first(where: { $0.tagName() == "code" }) {
                 walkNode(codeChild, baseURL: baseURL, lines: &lines, listDepth: listDepth, listIndex: listIndex)
             } else {
@@ -298,7 +307,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
                 lines.append("")
             }
 
-        // 順序なしリスト
+        // Unordered lists
         case "ul":
             lines.append("")
             for child in element.children().array() where child.tagName() == "li" {
@@ -312,7 +321,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
             }
             lines.append("")
 
-        // 順序付きリスト
+        // Ordered lists
         case "ol":
             lines.append("")
             for (idx, child) in element.children().array().filter({ $0.tagName() == "li" }).enumerated() {
@@ -326,13 +335,13 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
             }
             lines.append("")
 
-        // リストアイテム（直接のウォークでは子を展開）
+        // List items reached directly: just expand the children
         case "li":
             for child in element.getChildNodes() {
                 walkNode(child, baseURL: baseURL, lines: &lines, listDepth: listDepth, listIndex: listIndex)
             }
 
-        // 引用
+        // Block quotes
         case "blockquote":
             var quotedLines: [String] = []
             for child in element.getChildNodes() {
@@ -347,7 +356,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
                 lines.append("")
             }
 
-        // テーブル
+        // Tables
         case "table":
             let tableMarkdown = convertTable(element, baseURL: baseURL)
             if !tableMarkdown.isEmpty {
@@ -356,7 +365,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
                 lines.append("")
             }
 
-        // 段落
+        // Paragraphs
         case "p":
             var pLines: [String] = []
             for child in element.getChildNodes() {
@@ -369,47 +378,50 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
                 lines.append("")
             }
 
-        // 改行
+        // Line breaks
         case "br":
             lines.append("")
 
-        // 水平線
+        // Horizontal rules
         case "hr":
             lines.append("")
             lines.append("---")
             lines.append("")
 
-        // ブロック要素（div, section等）
+        // Containers with no Markdown of their own
         case "div", "section", "article", "main", "span", "figure", "figcaption", "details", "summary":
             for child in element.getChildNodes() {
                 walkNode(child, baseURL: baseURL, lines: &lines, listDepth: listDepth, listIndex: listIndex)
             }
 
-        // thead, tbody, tr 等のテーブル内部要素はスキップ（table で処理済み）
+        // Table internals are already handled by the table case
         case "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col":
             break
 
         default:
-            // 未知の要素は子を展開
+            // Unknown elements: expand the children
             for child in element.getChildNodes() {
                 walkNode(child, baseURL: baseURL, lines: &lines, listDepth: listDepth, listIndex: listIndex)
             }
         }
     }
 
-    /// テーブルをGFM Markdown形式に変換
+    /// Converts a table to a GitHub-flavoured Markdown table.
+    ///
+    /// Takes the header from `<thead>` or from leading `<th>` cells, and promotes the first body
+    /// row when there is neither. Short rows are padded so every row has the same column count.
     private static func convertTable(_ table: Element, baseURL: URL) -> String {
         var headerCells: [String] = []
         var rows: [[String]] = []
 
-        // ヘッダー行
+        // Header row
         if let thead = try? table.select("thead").first() {
             if let tr = try? thead.select("tr").first() {
                 headerCells = (try? tr.select("th, td").array().map { (try? $0.text()) ?? "" }) ?? []
             }
         }
 
-        // ヘッダーが thead にない場合、最初の tr から取得
+        // No thead: try the first row's <th> cells
         if headerCells.isEmpty {
             if let firstRow = try? table.select("tr").first() {
                 let ths = (try? firstRow.select("th").array()) ?? []
@@ -419,7 +431,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
             }
         }
 
-        // ボディ行
+        // Body rows
         let allRows = (try? table.select("tr").array()) ?? []
         let startIndex = headerCells.isEmpty ? 0 : 1
         for i in startIndex..<allRows.count {
@@ -429,14 +441,14 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
             }
         }
 
-        // ヘッダーがない場合、最初の行をヘッダーに昇格
+        // Still no header: promote the first body row
         if headerCells.isEmpty, !rows.isEmpty {
             headerCells = rows.removeFirst()
         }
 
         guard !headerCells.isEmpty else { return "" }
 
-        // カラム数を統一
+        // Pad every row to the widest one
         let colCount = max(headerCells.count, rows.map { $0.count }.max() ?? 0)
         let normalizedHeader = headerCells + Array(repeating: "", count: max(0, colCount - headerCells.count))
 
@@ -453,7 +465,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
 
     // MARK: - Metadata Extraction
 
-    /// メタデータを抽出
+    /// Reads description, `og:*` and canonical from the document, skipping empty values.
     private static func extractMetadata(from doc: Document) -> [String: String] {
         var metadata: [String: String] = [:]
 
@@ -490,7 +502,7 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
         return metadata
     }
 
-    /// タイトルを抽出（og:title > <title> の優先順位）
+    /// Returns the page title, preferring `og:title` over `<title>`.
     private static func extractTitle(from doc: Document, metadata: [String: String]) -> String? {
         if let ogTitle = metadata["og:title"] {
             return ogTitle
@@ -503,10 +515,13 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
 
     // MARK: - Helpers
 
-    /// 相対URLを絶対URLに解決
+    /// Absolutizes a link against the page URL.
+    ///
+    /// - Returns: `nil` for empty links, `data:`, `javascript:` and in-page anchors, so none of
+    ///   them reach the Markdown.
     private static func resolveURL(_ href: String?, base: URL) -> String? {
         guard let href = href, !href.isEmpty else { return nil }
-        // data: URL, javascript: はスキップ
+        // Skip data: URLs, javascript: and in-page anchors
         if href.hasPrefix("data:") || href.hasPrefix("javascript:") || href.hasPrefix("#") {
             return nil
         }
@@ -516,12 +531,12 @@ public struct SwiftSoupContentExtractor: WebContentExtractor, Sendable {
         return URL(string: href, relativeTo: base)?.absoluteString
     }
 
-    /// 後処理: 連続空行圧縮、行末空白除去
+    /// Collapses runs of blank lines, strips trailing whitespace, and trims the ends.
     private static func postProcess(_ markdown: String) -> String {
         let lines = markdown.components(separatedBy: "\n")
             .map { $0.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression) }
 
-        // 連続空行を最大1つに圧縮
+        // At most one blank line in a row
         var result: [String] = []
         var previousWasEmpty = false
 

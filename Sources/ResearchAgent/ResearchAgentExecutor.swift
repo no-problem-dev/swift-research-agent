@@ -7,17 +7,25 @@ import LLMTool
 import LLMAgentStep
 import ResearchStore
 
-/// researcher ワーカーの AgentExecutor。
+/// Runs the researcher loop and re-prompts the model when its citations do not check out.
 ///
-/// AgentLoop を回し、完了テキストを ResearchCitationGate（SourceRegistry 照合）に掛け、
-/// 違反があれば是正メッセージを積んで再ループする（上限到達時は劣化許容でそのまま出す）。
-/// 検証ループは executor 内に閉じ、外からはワーカーの品質が上がっただけに見える。
+/// Once the loop produces an answer, every URL in it is matched against this task's ledger.
+/// Violations become a corrective user turn and the loop runs again, up to `maxRetries` times.
+/// The retries are invisible from the outside: the caller sees one task that took longer.
 ///
-/// 合格した回答には、引用された出典の構造化データを artifact metadata
-/// `research.references` として添付する（A2A 境界で citation を構造のまま運ぶ契約）。
+/// The last attempt is not checked. When `attempt` reaches `maxRetries` the answer is emitted as
+/// it stands, so an answer that never satisfies the gate still reaches the caller — and with
+/// `maxRetries: 0` the check never runs at all.
+///
+/// A completed task carries one text artifact plus metadata: token usage under `llm.usage`, and
+/// the cited sources as JSON under `research.references`. References are built from whatever the
+/// final text cites, so on an unchecked last attempt they can be empty or can include sources that
+/// were only ever search hits.
 public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor where Client.Model: Sendable {
-    /// artifact metadata に References を載せるキー。
-    /// 値は `[SourceRecord]` の JSON 文字列（`SourceRecord.CodingKeys` 参照）。
+    /// Artifact metadata key carrying the cited sources.
+    ///
+    /// The value is a JSON array of `SourceRecord` with snake_case keys, so a consumer can render
+    /// references without parsing them back out of the answer text.
     public static var referencesMetadataKey: String { "research.references" }
 
     let client: Client
@@ -26,35 +34,42 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
     let systemPrompt: SystemPrompt?
     let maxSteps: Int
     let maxTokens: Int?
-    /// 観測ソースの台帳（ResearchToolKit と共有するセッションスコープの actor）
+    /// Source ledger; must be the same instance the tool kit writes to, or every citation fails.
     let registry: SourceRegistry
-    /// 出典検証の是正リトライ上限
+    /// Corrective retries the gate gets. The attempt after the last one is emitted unchecked.
     let maxRetries: Int
     let cachePolicy: PromptCachePolicy
-    /// ループが実際にレンダリングした system prompt の観測フック（デバッグ計測用）。
+    /// Receives the system prompt the loop actually rendered — once per task, even across retries.
     let onSystemPrompt: (@Sendable (String) async -> Void)?
-    /// LLM 呼び出し 1 回ごとの usage 観測フック（呼び出し番号, usage, モデル ID）。
-    /// 委譲結果の usage は全呼び出しの合算なので、「合算値 = プロンプトサイズ」の
-    /// 誤読を防ぐにはこの per-call 計測を購読する。
+    /// Receives usage for each individual LLM call (call number, usage, model ID).
+    ///
+    /// The usage reported for the task as a whole is the sum over every call, so reading it as
+    /// "the prompt was this big" is wrong; subscribe here when the per-call numbers matter.
     let onUsage: (@Sendable (_ call: Int, _ usage: TokenUsage, _ model: String) async -> Void)?
-    /// ネイティブ会話履歴（tool call/result を型のまま保持）。
+    /// History carried across tasks in the same context.
+    ///
+    /// This executor writes only the user input and the final answer; the tool transcript is not
+    /// carried over.
     let history: any AgentHistoryStore
 
-    /// ResearchAgentExecutor を作成する。
+    /// Creates an executor bound to one task's source ledger.
     ///
     /// - Parameters:
-    ///   - client: LLM 呼び出しに使うクライアント（`AgentCapableClient` 適合）。
-    ///   - model: 使用するモデル識別子。
-    ///   - tools: エージェントが呼び出せるツールセット。
-    ///   - systemPrompt: システムプロンプト。`nil` でプロバイダーデフォルト。
-    ///   - maxSteps: エージェントループの最大ステップ数（デフォルト: 16）。
-    ///   - maxTokens: 1 回の LLM 呼び出しあたりの最大出力トークン数。`nil` でプロバイダーデフォルト。
-    ///   - registry: 観測ソースの台帳。`ResearchToolKit` と共有するセッションスコープの actor。
-    ///   - maxRetries: 出典検証 NG 時の是正リトライ上限（デフォルト: 2）。
-    ///   - cachePolicy: システムプロンプト・ツール宣言のキャッシュ方針。
-    ///   - onSystemPrompt: ループが実際にレンダリングした system prompt を受け取る観測フック（デバッグ・計測用、省略可）。
-    ///   - onUsage: LLM 呼び出し 1 回ごとの usage を受け取る観測フック（呼び出し番号・usage・モデル ID、省略可）。是正リトライを跨ぐ per-call 計測に使う。
-    ///   - history: ネイティブ会話履歴ストア。tool call/result を型のまま保持する。
+    ///   - client: Client used for the LLM calls.
+    ///   - model: Model identifier to call.
+    ///   - tools: Tools the loop may call. Give it the same set the prompt was built from.
+    ///   - systemPrompt: System prompt, or `nil` for the provider default.
+    ///   - maxSteps: Upper bound on loop steps within one attempt (default: 16).
+    ///   - maxTokens: Output token cap per LLM call, or `nil` for the provider default.
+    ///   - registry: Source ledger. Must be the instance the tool kit records into, otherwise
+    ///     every citation looks fabricated.
+    ///   - maxRetries: Corrective retries after a failed citation check (default: 2). `0` skips
+    ///     the check entirely.
+    ///   - cachePolicy: Caching of the system prompt and tool declarations.
+    ///   - onSystemPrompt: Receives the rendered system prompt, once per task.
+    ///   - onUsage: Receives usage per LLM call, including calls made during corrective retries.
+    ///   - history: Store for history across tasks in this context. Only the user input and the
+    ///     final answer are written to it.
     public init(
         client: Client,
         model: Client.Model,
@@ -83,17 +98,17 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
         self.history = history
     }
 
-    /// タスクリクエストを実行する。
+    /// Runs one task: agent loop, citation check, corrective retries, then a single artifact.
     ///
-    /// `AgentLoop` を駆動し、完了テキストを `ResearchCitationGate` で検証する。
-    /// 違反がある場合は是正メッセージを積んで再試行し（上限 `maxRetries`）、
-    /// 合格した回答を artifact として出力する。上限到達時は劣化許容でそのまま出力する。
+    /// Thinking text and tool names are streamed as working status; the answer text is not
+    /// streamed. Cancellation propagates to the caller. Any other error is reported as a failed
+    /// task and swallowed rather than rethrown, so this returns normally either way.
     public func execute(_ context: RequestContext, eventQueue: EventQueue) async throws {
         let updater = TaskUpdater(eventQueue: eventQueue, taskId: context.taskId, contextId: context.contextId)
         try await updater.startWork()
 
-        // usage（metrics）と systemPrompt（debug）は意味論イベントと別の telemetry 側帯で受ける。
-        // 是正リトライを跨いで集計するため状態は actor に集約する。
+        // usage (metrics) and systemPrompt (debug) arrive on the telemetry sideband rather than as
+        // semantic events. The state lives in an actor because it is aggregated across retries.
         let telemetryState = ResearchTelemetryState()
         let onSystemPrompt = self.onSystemPrompt
         let onUsage = self.onUsage
@@ -111,7 +126,7 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                     let calls = await telemetryState.addUsage(usage)
                     await onUsage?(calls, usage, model)
                 case .systemPrompt(let rendered):
-                    // 是正リトライでも内容は不変なので 1 回だけ流す
+                    // The rendered prompt is identical on every retry, so emit it once
                     if await telemetryState.shouldEmitSystemPrompt() { await onSystemPrompt?(rendered) }
                 case .validationFailed:
                     break
@@ -137,16 +152,16 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                     case .toolCall(_, let name, _):
                         try await updater.updateStatus(.working, message: updater.makeAgentMessage([.text("🔧 \(name)")]))
                     case .toolResult:
-                        // ソースの記帳はツール自身が SourceRegistry へ行う（傍受不要）
+                        // The tools record their own sources in the ledger; nothing to intercept here
                         break
                     case .textDelta:
-                        // 最終本文は .completed で受け取る。増分は状態表示に使わない
-                        // （thinkingDelta と二重に流すと利用者側の表示が混ざる）。
+                        // The final text arrives with .completed. Deltas are not surfaced: streaming
+                        // them alongside thinkingDelta interleaves two texts in the consumer's view.
                         break
                     case .toolApprovalRequired(_, let name, _, _):
-                        // このワーカーは無人で走るので承認を取る経路が無い。
-                        // AgentLoop は承認要求を出した時点でツールを実行せず戻るため、
-                        // ここで黙ると「本文が空のまま終わった」ようにしか見えなくなる。理由を残す。
+                        // This worker runs unattended, so there is no way to approve a tool. The loop
+                        // returns without running it once approval is requested, and staying silent
+                        // here would look like the answer simply came back empty. Say why.
                         try await updater.updateStatus(.working, message: updater.makeAgentMessage(
                             [.text("承認が必要なツール「\(name)」が呼ばれたため中断した（無人実行では承認できない）")]))
                     case .inputRequired(let question):
@@ -160,10 +175,10 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
                     ? await ResearchCitationGate.validate(text: finalText, registry: registry)
                     : []
                 if issues.isEmpty {
-                    // 履歴は「入力 + 最終回答」の要約ペアで保存する。全 transcript（fetch 本文
-                    // 数千トークン込み)を持ち越すとタスクごとにコンテキストが線形成長するため。
-                    // 出典の照合材料は SourceRegistry が保持しており、過去タスクで fetch 済みの
-                    // URL は次タスクでも引用可能なまま — ゲートの検証は壊れない。
+                    // Store the exchange as an input/answer pair. Carrying the whole transcript,
+                    // thousands of tokens of fetched page text included, would grow this context
+                    // linearly with every task. The evidence for citations stays in the ledger, which
+                    // still holds pages fetched by earlier tasks, so the gate keeps working.
                     await history.save(priorHistory + [.user(userInput), .assistant(finalText)], for: contextId)
                     await updater.addArtifact(
                         [.text(finalText)], name: "response", metadata: await artifactMetadata(finalText: finalText, usage: await telemetryState.total)
@@ -186,7 +201,6 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
         }
     }
 
-    /// タスクをキャンセルする。
     public func cancel(_ context: RequestContext, eventQueue: EventQueue) async throws {
         let updater = TaskUpdater(eventQueue: eventQueue, taskId: context.taskId, contextId: context.contextId)
         try await updater.cancel()
@@ -194,7 +208,8 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
 
     // MARK: - Artifact Metadata
 
-    /// usage（AgentRuntime の UsageMetadata と同じ key "llm.usage"）と References を artifact metadata で運ぶ。
+    /// Packs token usage (under "llm.usage", the key UsageMetadata uses) and the cited sources
+    /// into the artifact's metadata. Returns `nil` when there is neither.
     private func artifactMetadata(finalText: String, usage: TokenUsage?) async -> A2AMetadata? {
         var metadata: A2AMetadata = [:]
         if let usage,
@@ -213,21 +228,22 @@ public struct ResearchAgentExecutor<Client: AgentCapableClient>: AgentExecutor w
     }
 }
 
-/// telemetry sink（@Sendable）越しに usage 集計・LLM 呼び出し数・systemPrompt の一度きり発火を
-/// 是正リトライを跨いで保持するスレッドセーフな状態。
+/// State behind the `@Sendable` telemetry sink, shared across corrective retries.
+///
+/// Totals usage, counts LLM calls, and remembers whether the system prompt hook has already fired.
 private actor ResearchTelemetryState {
     private(set) var total: TokenUsage?
     private var calls = 0
     private var emittedSystemPrompt = false
 
-    /// usage を加算し、累計の LLM 呼び出し回数を返す。
+    /// Adds a usage sample and returns how many LLM calls have been counted so far.
     func addUsage(_ usage: TokenUsage) -> Int {
         total = total?.adding(usage) ?? usage
         calls += 1
         return calls
     }
 
-    /// systemPrompt をまだ流していなければ true を返し、以後は false（一度きり）。
+    /// Returns `true` for the first caller only.
     func shouldEmitSystemPrompt() -> Bool {
         if emittedSystemPrompt { return false }
         emittedSystemPrompt = true

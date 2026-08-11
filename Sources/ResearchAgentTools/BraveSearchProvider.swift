@@ -6,11 +6,12 @@ import FoundationNetworking
 
 // MARK: - BraveSearchProvider
 
-/// Brave Search REST API を使用した検索プロバイダー。
+/// Search provider backed by the Brave Search REST API.
 ///
-/// Brave Search APIキーが必要（https://brave.com/search/api/ から取得）。
+/// Needs a Brave Search API key. Results carry no date and no rank, so sources found this way lose
+/// the freshness and ranking signals a Serper result would keep.
 ///
-/// ## 使用例
+/// ## Example
 ///
 /// ```swift
 /// let provider = BraveSearchProvider(apiKey: "YOUR_API_KEY")
@@ -27,14 +28,14 @@ public final class BraveSearchProvider: WebSearchProvider, @unchecked Sendable {
 
     // MARK: - Initialization
 
-    /// BraveSearchProvider を作成する。
+    /// Creates a Brave-backed provider.
     ///
     /// - Parameters:
-    ///   - apiKey: Brave Search APIキー
-    ///   - searchLang: 検索言語（例: "ja"）
-    ///   - country: 国コード（例: "JP"）
-    ///   - timeout: リクエストのタイムアウト秒数（デフォルト: 15）
-    ///   - transport: HTTP トランスポート（テスト時に差し替え可能）
+    ///   - apiKey: Brave Search API key.
+    ///   - searchLang: Search language, for example "ja".
+    ///   - country: Country code, for example "JP".
+    ///   - timeout: Per-request timeout in seconds (default: 15).
+    ///   - transport: HTTP transport, for substituting one in tests.
     public init(
         apiKey: String,
         searchLang: String? = nil,
@@ -58,13 +59,16 @@ public final class BraveSearchProvider: WebSearchProvider, @unchecked Sendable {
 
     // MARK: - WebSearchProvider
 
-    /// Brave Search APIで検索を実行する。
+    /// Runs one query against Brave Search.
+    ///
+    /// This provider does not retry: a non-2xx status throws immediately. Wrap it in
+    /// `ResilientSearchProvider` if you want retries, a rate limit or a circuit breaker.
     ///
     /// - Parameters:
-    ///   - query: 検索クエリ
-    ///   - maxResults: 最大結果数（最大 20）
-    /// - Returns: 検索結果の配列
-    /// - Throws: `WebSearchError`
+    ///   - query: Query string.
+    ///   - maxResults: Upper bound on results, clamped to Brave's limit of 20.
+    /// - Throws: `WebSearchError.invalidQuery` if the query cannot be put in a URL, or
+    ///   `WebSearchError.httpError` for a non-2xx response.
     public func search(query: String, maxResults: Int) async throws -> [WebSearchResult] {
         var components = URLComponents(string: "https://api.search.brave.com/res/v1/web/search")!
         var queryItems = [

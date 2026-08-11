@@ -9,16 +9,13 @@ import ResearchStore
 
 // MARK: - ResearchToolKit
 
-/// Web 調査ツール（web_search / fetch）を提供する ToolKit。
+/// Provides the `web_search` and `fetch` tools, and records everything they observe in the ledger.
 ///
-/// LLMMCP の WebToolKit / WebSearchToolKit からの移植（移植元は保守凍結）。
-/// 最大の違いは `SourceRegistry` への記帳: 観測した URL と fetch 成功・本文を
-/// 台帳に記録し、出典検証ゲートの照合材料にする（MediaToolKit が
-/// MediaSessionStore へ成果物を書き込むのと同型）。
+/// Search hits are recorded as not-yet-fetched; a successful fetch stores the page's whole
+/// extracted text and marks the URL citable. That bookkeeping is what makes the citation gate
+/// possible, and it is all this type does about citations — judging violations belongs to the gate.
 ///
-/// 責務は素材の提供と記帳まで — 引用の検証はゲート側（ResearchAgent）が行う。
-///
-/// ## 使用例
+/// ## Example
 ///
 /// ```swift
 /// let registry = SourceRegistry()
@@ -28,48 +25,50 @@ import ResearchStore
 /// )
 /// ```
 ///
-/// ## 提供されるツール
+/// ## Tools
 ///
-/// - `web_search`: クエリでWeb検索を実行し、結果一覧を返す（プロバイダー設定時のみ）
-/// - `fetch`: URLからコンテンツを取得（HTML自動Markdown変換、ページネーション対応）
+/// - `web_search`: runs a query and returns titles, URLs and snippets. Offered only when a search
+///   provider is configured.
+/// - `fetch`: downloads a URL and returns its readable content as Markdown, paginated by
+///   `start_index`. Always offered.
 public final class ResearchToolKit: ToolKit, @unchecked Sendable {
     // MARK: - Properties
 
     public let name: String = "research"
 
-    /// 観測ソースの台帳（セッションスコープ、ゲートと共有）
+    /// Session ledger, shared with the citation gate.
     private let registry: SourceRegistry
 
-    /// 検索プロバイダー（nil の場合 web_search ツールを提供しない）
+    /// Search backend; when `nil` no `web_search` tool is offered at all.
     private let searchProvider: (any WebSearchProvider)?
 
-    /// 許可されたドメイン（nilの場合は全て許可）
+    /// Hosts fetch may contact, lowercased and matched exactly — subdomains are not implied.
+    /// `nil` allows every host.
     private let allowedDomains: Set<String>?
 
-    /// HTTP トランスポート
     private let transport: any HTTPTransport
 
-    /// タイムアウト秒数
     private let timeout: TimeInterval
 
-    /// 最大コンテンツサイズ（バイト）
+    /// Byte cap on a response before it is truncated, or rejected when it is binary.
     private let maxContentSize: Int
 
-    /// コンテンツ抽出器
     private let extractor: any WebContentExtractor
 
     // MARK: - Initialization
 
-    /// `ResearchToolKit` を作成する。
+    /// Creates a tool kit bound to one task's source ledger.
     ///
     /// - Parameters:
-    ///   - registry: 観測ソースの台帳（ゲートと共有するセッションスコープの actor）
-    ///   - searchProvider: 検索プロバイダー（nil で web_search を提供しない）
-    ///   - allowedDomains: 許可するドメインの配列（nil の場合は全て許可）
-    ///   - timeout: リクエストのタイムアウト秒数（デフォルト: 30）
-    ///   - maxContentSize: 最大取得サイズ（デフォルト: 5 MB）
-    ///   - extractor: コンテンツ抽出器（デフォルト: `SwiftSoupContentExtractor`）
-    ///   - transport: HTTP トランスポート（テスト時に差し替え可能）
+    ///   - registry: Ledger shared with the citation gate; the executor must hold the same instance.
+    ///   - searchProvider: Search backend, or `nil` to offer `fetch` only.
+    ///   - allowedDomains: Hosts fetch may contact, matched exactly; `nil` allows all of them.
+    ///   - timeout: Per-request timeout in seconds (default: 30). The session's resource timeout is
+    ///     twice this.
+    ///   - maxContentSize: Response size cap in bytes (default: 5 MB).
+    ///   - extractor: HTML-to-Markdown extractor (default: `SwiftSoupContentExtractor`).
+    ///   - transport: HTTP transport, for substituting one in tests. Supplying it skips the session
+    ///     configuration, but `timeout` is still applied to each request.
     public init(
         registry: SourceRegistry,
         searchProvider: (any WebSearchProvider)? = nil,
@@ -98,14 +97,15 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
 
     // MARK: - Factory Methods
 
-    /// Serper（Google SERP）検索付きの ResearchToolKit を作成
+    /// Creates a kit backed by Serper (Google SERP), resilient by default.
     ///
     /// - Parameters:
-    ///   - registry: 観測ソースの台帳
-    ///   - apiKey: Serper APIキー
-    ///   - gl: 地域コード（例: "jp"）
-    ///   - hl: 言語コード（例: "ja"）
-    ///   - resilience: レジリエンス設定（nil でレジリエンスなし）
+    ///   - registry: Ledger shared with the citation gate.
+    ///   - apiKey: Serper API key.
+    ///   - gl: Region code, for example "jp".
+    ///   - hl: Language code, for example "ja".
+    ///   - resilience: Cache, rate limit, circuit breaker and retry settings; `nil` calls Serper
+    ///     directly, with no retry and no rate limit.
     public static func serper(
         registry: SourceRegistry,
         apiKey: String,
@@ -126,18 +126,21 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
         tools(enabled: ResearchToolID.allTools)
     }
 
-    /// 構成済みプロバイダから提供可能なツール ID（`tools(enabled:)` の上限）。
-    /// ホスト UI はこれで「キー未設定で使えないツール」を判別できる。
+    /// Tool IDs this instance can actually offer — the ceiling for `tools(enabled:)`.
+    ///
+    /// `web_search` is absent when no search provider was configured, which is how a host tells
+    /// "switched off" from "cannot be switched on".
     public var availableToolIDs: Set<ResearchToolID> {
         var ids = ResearchToolID.coreTools
         if searchProvider != nil { ids.insert(.webSearch) }
         return ids
     }
 
-    /// enabled で選別したツール一式。コアツール（fetch）は常に含まれ、
-    /// プロバイダ未構成のツールは enabled に含めても落ちる。
-    /// fetch の説明・エラー文はツール構成に依存しない表現で書かれている
-    /// （web_search の有無どちらでも正しい誘導になる）。
+    /// Returns the tools for one configuration: core tools always, the rest only if asked for.
+    ///
+    /// `fetch` is core and survives `enabled: []`; `web_search` is dropped whenever it is not
+    /// enabled or no provider is configured. The fetch tool's description and error messages never
+    /// mention search, so they read correctly with or without it.
     public func tools(enabled: Set<ResearchToolID>) -> [any Tool] {
         let effective = availableToolIDs.intersection(enabled.union(ResearchToolID.coreTools))
         var tools: [any Tool] = []
@@ -174,7 +177,7 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
             let maxResults = min(max(input.maxResults ?? 5, 1), 10)
             let results = try await provider.search(query: input.query, maxResults: maxResults)
 
-            // 観測した URL を台帳へ記帳（fetched=false: 引用にはまだ使えない）
+            // Record what was observed; fetched = false, so none of it is citable yet
             for result in results {
                 await registry.registerSearchResult(
                     url: result.url,
@@ -240,7 +243,9 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
 
             let contentType = response.headers["Content-Type"]
 
-            // バイナリコンテンツ（PDF・画像等）はテキスト変換不可のためエラー
+            // Binary payloads (PDF, images, ...) cannot become text, so they are an error rather
+            // than a truncation. Only oversized bodies are inspected here; a small binary one falls
+            // through to the text path below.
             if responseData.count > maxContentSize {
                 let ct = contentType?.lowercased() ?? ""
                 if ct.contains("application/pdf") || ct.contains("application/octet-stream")
@@ -249,7 +254,7 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
                 }
             }
 
-            // テキスト/HTMLコンテンツは切り詰めて処理続行
+            // Text and HTML are truncated and processing continues
             let processData: Data
             let wasTruncated: Bool
             if responseData.count > maxContentSize {
@@ -264,7 +269,7 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
                 throw ResearchToolError.encodingError
             }
 
-            // HTML判定 + Markdown抽出
+            // Detect HTML, then extract Markdown
             let title: String?
             let fullText: String
 
@@ -277,10 +282,11 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
                 fullText = content
             }
 
-            // fetch 成功を台帳へ記帳（全文を照合材料として保持。引用可になる）
+            // Record the successful fetch. The whole extracted text is stored, not just the page
+            // slice returned below, and the URL becomes citable.
             await registry.registerFetch(url: url.absoluteString, title: title, content: fullText)
 
-            // ページネーション処理
+            // Pagination
             let totalLength = fullText.count
             let safeStartIndex = min(startIndex, max(0, totalLength - 1))
             let endIndex = min(safeStartIndex + maxLength, totalLength)
@@ -317,7 +323,7 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
 
     // MARK: - Domain Validation
 
-    /// ドメインが許可されているかチェック
+    /// Rejects anything that is not an http(s) URL on an allowed host.
     private func validateURL(_ urlString: String) throws -> URL {
         guard let url = URL(string: urlString) else {
             throw ResearchToolError.invalidURL(urlString)
@@ -339,18 +345,19 @@ public final class ResearchToolKit: ToolKit, @unchecked Sendable {
 
     // MARK: - HTML Detection
 
-    /// コンテンツが HTML かどうかを判定する。
+    /// Reports whether the body should go through HTML extraction.
     ///
-    /// Content-Type ヘッダーと先頭の HTML タグの両方で判定する。
+    /// Either an HTML content type or a body starting with a doctype or `<html>` counts, so a page
+    /// served as `text/plain` is still extracted.
     private static func isHTMLContent(contentType: String?, content: String) -> Bool {
-        // Content-Typeベースの判定
+        // By content type
         if let ct = contentType?.lowercased() {
             if ct.contains("text/html") || ct.contains("application/xhtml+xml") {
                 return true
             }
         }
 
-        // 先頭タグベースの判定
+        // By leading tag
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if trimmed.hasPrefix("<!doctype html") || trimmed.hasPrefix("<html") {
             return true
@@ -418,7 +425,10 @@ private struct FetchResult: Codable {
 
 // MARK: - Errors
 
-/// `ResearchToolKit` が fetch / URL 検証時にスローするエラー。
+/// Failures from the `fetch` tool and its URL validation.
+///
+/// Every message is written for the model that will read it: what went wrong, and what to try
+/// instead, so a dead URL turns into a different tool call rather than a dead end.
 public enum ResearchToolError: Error, LocalizedError {
     case invalidURL(String)
     case unsupportedScheme(String)

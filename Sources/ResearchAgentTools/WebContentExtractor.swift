@@ -2,39 +2,39 @@ import Foundation
 
 // MARK: - WebContentExtractor Protocol
 
-/// HTML コンテンツ抽出の抽象プロトコル。
+/// Turns a fetched HTML page into the text the model reads and the ledger stores.
 ///
-/// 異なる抽出戦略を差し替え可能にする。`WebSearchProvider` パターンに倣い、
-/// デフォルト実装として `SwiftSoupContentExtractor` を提供する。
+/// Implement it to replace the default extraction strategy; `SwiftSoupContentExtractor` ships as
+/// the default.
 ///
-/// ## 使用例
+/// ## Example
 ///
 /// ```swift
 /// let extractor = SwiftSoupContentExtractor()
 /// let content = try extractor.extract(html: htmlString, url: pageURL)
-/// print(content.content) // Markdown形式のテキスト
+/// print(content.content) // Markdown text
 /// ```
 public protocol WebContentExtractor: Sendable {
-    /// HTML からコンテンツを抽出する。
+    /// Extracts the readable part of an HTML document.
     ///
     /// - Parameters:
-    ///   - html: 生の HTML 文字列
-    ///   - url: ページの URL（相対リンクの絶対化に使う）
-    /// - Returns: 抽出されたコンテンツ
+    ///   - html: Raw HTML.
+    ///   - url: Page URL, used to absolutize relative links.
+    /// - Returns: Title, Markdown body and page metadata.
     func extract(html: String, url: URL) throws -> ExtractedContent
 }
 
 // MARK: - ExtractedContent
 
-/// 抽出されたWebコンテンツ
+/// What extraction produced: the text returned to the model and stored as the source body.
 public struct ExtractedContent: Sendable {
-    /// ページタイトル
+    /// Page title; `nil` when the page offers neither an `og:title` nor a `<title>`.
     public let title: String?
 
-    /// 抽出されたコンテンツ（Markdown形式）
+    /// The readable body, converted to Markdown.
     public let content: String
 
-    /// メタデータ（description, og:image, canonical等）
+    /// Page metadata that survived extraction: description, `og:*`, canonical.
     public let metadata: [String: String]
 
     public init(title: String?, content: String, metadata: [String: String] = [:]) {

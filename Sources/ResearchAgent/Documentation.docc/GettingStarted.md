@@ -1,16 +1,16 @@
-# ResearchAgent 入門
+# Getting started
 
-出典検証ゲート付きリサーチエージェントを組み立て、検索→フェッチ→引用検証のループを実行する。
+Assemble a research worker whose answers are checked against the pages it fetched, and understand what that check is worth.
 
-## インストール
+## Installation
 
-`Package.swift` に依存を追加する。
+Add the package to `Package.swift`.
 
 ```swift
 .package(url: "https://github.com/no-problem-dev/swift-research-agent.git", from: "0.1.1")
 ```
 
-使用するターゲットに必要なライブラリを指定する。
+Then depend on the libraries your target needs.
 
 ```swift
 .target(
@@ -23,11 +23,13 @@
 )
 ```
 
-## 基本的な使い方: 出典検証付きリサーチの組み立て
+## Building a checked research worker
 
-### 1. SourceRegistry を作成する
+### 1. Create the ledger
 
-`SourceRegistry` はセッションスコープの台帳だ。`ResearchToolKit`（ツール側）と `ResearchAgentExecutor`（検証側）の両方に同じインスタンスを渡すことで、ツールが記帳したソースをゲートが照合できる。
+`SourceRegistry` is scoped to one task. Hand the **same instance** to the tool kit and to the
+executor: the tools write to it, the gate reads from it, and with two different instances every
+citation would look fabricated.
 
 ```swift
 import ResearchStore
@@ -37,9 +39,11 @@ import ResearchAgent
 let registry = SourceRegistry()
 ```
 
-### 2. ResearchToolKit を構成する
+### 2. Configure the tools
 
-Serper（Google SERP）を使う場合は `ResearchToolKit.serper` ファクトリを使う。`gl`/`hl` で地域・言語を指定できる。
+With Serper (Google's result page), the factory also wraps the provider in the default resilience
+layers — one request per second, one retry, a breaker that opens after five failures, and a
+five-minute result cache.
 
 ```swift
 let toolKit = ResearchToolKit.serper(
@@ -50,7 +54,8 @@ let toolKit = ResearchToolKit.serper(
 )
 ```
 
-Brave Search を使う場合は `BraveSearchProvider` を直接渡す。
+With Brave Search, pass the provider directly. Brave results carry no date and no rank, so those two
+fields stay `nil` in the ledger.
 
 ```swift
 let toolKit = ResearchToolKit(
@@ -59,43 +64,65 @@ let toolKit = ResearchToolKit(
 )
 ```
 
-### 3. ResearchAgentExecutor を組み立てる
+Passing no provider at all is a supported configuration: the kit then offers `fetch` only, and the
+prompt and the delegation description follow suit if you pass `tools: [.fetch]` to them as well.
 
-`ResearcherAgent.systemPrompt()` は有効ツール構成に合わせてプロンプトを生成する。`web_search` を無効にする場合は `tools: [.fetch]` を渡す。
+### 3. Assemble the executor
+
+`ResearcherAgent.systemPrompt()` builds the prompt from the same tool set the worker will hold.
+Its default output constraint asks for concise Japanese — override `outputConstraint` for any other
+language.
 
 ```swift
 import AgentRuntime   // InMemoryAgentHistory
 import LLMClient      // PromptCachePolicy
 
 let executor = ResearchAgentExecutor(
-    client: anthropicClient,          // AgentCapableClient を実装したクライアント
+    client: anthropicClient,          // any client conforming to AgentCapableClient
     model: .claude_opus_4_5,
     tools: ToolSet { toolKit.tools(enabled: ResearchToolID.allTools) },
     systemPrompt: ResearcherAgent.systemPrompt(),
     maxSteps: 16,
     registry: registry,
-    maxRetries: 2,                    // 出典検証 NG 時の是正リトライ上限
+    maxRetries: 2,                    // corrective retries after a failed citation check
     cachePolicy: .implicit,
     history: InMemoryAgentHistory()
 )
 ```
 
-### 4. タスクを実行する
+### 4. Run a task
 
-`AgentExecutor` として `AgentRuntime` に登録し、タスクリクエストを送信する。合格した回答のアーティファクトには `ResearchAgentExecutor.referencesMetadataKey`（`"research.references"`）キーで引用出典の `[SourceRecord]` JSON が付く。
+`ResearchAgentExecutor` conforms to `AgentExecutor`, so it registers with the runtime like any other
+worker. The response artifact carries the cited sources as a `[SourceRecord]` JSON array under
+`ResearchAgentExecutor.referencesMetadataKey` (`"research.references"`), and the token usage under
+`"llm.usage"`.
 
 ```swift
-// ResearchAgentExecutor は AgentExecutor を実装しているため、
-// AgentRuntime が提供する実行基盤にそのまま登録できる。
 let runtime = AgentRuntime(executor: executor, card: ResearcherAgent.card())
 ```
 
-### 出典検証の仕組み
+## How the check works
 
-`ResearchCitationGate` はネットワークも LLM も使わず、`SourceRegistry` との照合だけで検証する。
+`ResearchCitationGate` uses no network and no LLM. It extracts every http(s) URL from the answer and
+matches each one against the ledger:
 
-- 引用 URL が台帳に存在しない → 捏造 URL として違反
-- 引用 URL が `fetched == false`（検索スニペットのみ）→ フェッチ未実施として違反
-- 違反がある場合は是正メッセージを会話に積んで再ループ（`maxRetries` 回まで）
+- No URL at all in the answer — one violation, and nothing else is examined. Since only tool results
+  can supply a URL, requiring a citation is what forces the model to use the tools.
+- A URL with no record — it never came back from `web_search` or `fetch` in this task.
+- A URL recorded but never fetched — a search snippet is a lead, not evidence.
 
-この設計により、LLM は必ず `web_search → fetch` の順でソースを確認してから引用するよう誘導される。
+Matching happens on the normalized key, so `www.`, tracking parameters, a fragment or a trailing
+slash make no difference, while a different path or query is a different page and counts as uncited.
+Violations are turned into a corrective message and the loop runs again.
+
+### What it does not catch
+
+- **The last attempt is unchecked.** After `maxRetries` corrections the answer is emitted as it
+  stands, so an answer that never passes still reaches the caller. Setting `maxRetries: 0` disables
+  the check altogether. If it matters to you whether an answer was checked, run
+  `ResearchCitationGate.validate(text:registry:)` yourself on the artifact.
+- **Provenance is not support.** Once a page has been fetched, it can be cited for anything — the
+  gate never compares the answer against the stored page text.
+- **A silent gap in the ledger looks like fabrication.** A URL that fails normalization is dropped
+  from the ledger without an error even when the fetch succeeded, and citing it is then reported as
+  a URL that never appeared in a tool result.

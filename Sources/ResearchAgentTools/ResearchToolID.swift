@@ -1,30 +1,31 @@
-/// researcher のツール ID 一覧（SSOT）。
+/// The tools a researcher worker can be given, named once for every layer that has to agree.
 ///
-/// ホストはこの ID でツールの有効/無効を選び、同じセットを
-/// `ResearchToolKit.tools(enabled:)` と `ResearcherAgent.systemPrompt(tools:)` /
-/// `ResearcherAgent.description(tools:)` の全てへ渡す —
-/// ツール一式・プロンプトの言及・委譲ルーティングの自己記述が常に一致する。
-/// 表示用コピー（日本語要約など）はホスト UI 層が所有する。
+/// A host picks a set of these and passes the same set to the tool kit, the system prompt and the
+/// delegation description, so the tools the worker holds, the tools the prompt talks about and the
+/// capability the orchestrator routes on can never drift apart. Display copy for a UI is not here;
+/// it belongs to the host.
 public enum ResearchToolID: String, CaseIterable, Codable, Hashable, Sendable {
     case webSearch = "web_search"
     case fetch = "fetch"
 
-    /// 無効化できないツール。fetch は出典検証ゲート（ResearchCitationGate）の
-    /// 照合材料（fetch 済み本文）を台帳へ記帳する唯一の経路なので、外すと
-    /// 「引用可能な出典」が存在できなくなる。
+    /// Whether the tool survives being switched off.
+    ///
+    /// Only `fetch` does. It is the one path that marks a URL fetched in the ledger, so removing it
+    /// would leave no source that the citation gate can ever accept.
     public var isCore: Bool {
         self == .fetch
     }
 
-    /// 動作に Web 検索プロバイダ（Serper 等）が要るツール。
-    /// プロバイダ未構成なら enabled に含めても提供されない。
+    /// Whether the tool needs a configured search provider.
+    ///
+    /// Enabling one of these without a provider silently yields nothing: the tool is not offered.
     public var requiresSearchProvider: Bool {
         self == .webSearch
     }
 
-    /// 無効化できないコアツールのセット。
+    /// The tools that are always offered, whatever the caller enables.
     public static let coreTools: Set<ResearchToolID> = Set(allCases.filter(\.isCore))
 
-    /// 全ツールのセット（デフォルト = 全部オン）。
+    /// Every tool, which is the default configuration.
     public static let allTools: Set<ResearchToolID> = Set(allCases)
 }

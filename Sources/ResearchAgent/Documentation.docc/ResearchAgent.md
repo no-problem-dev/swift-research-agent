@@ -1,14 +1,17 @@
 # ``ResearchAgent``
 
-出典検証ゲート付き Web リサーチエージェント。`AgentExecutor` を実装し、LLM が引用した URL が実際にフェッチ済みかをセッションスコープの台帳で照合する。
+A web research worker whose citations are checked against a ledger of the pages it actually fetched, and re-prompted when they do not hold up.
 
 ## Overview
 
-`ResearchAgent` は `swift-research-agent` パッケージの最上位レイヤーだ。3 つの責務を統合する。
+`ResearchAgent` is the top layer of `swift-research-agent`. It contributes three things:
 
-- **エージェント自己記述** — `ResearcherAgent` が system prompt・AgentCard・委譲説明を有効ツール構成から組み立てる
-- **実行ループ** — `ResearchAgentExecutor` が `AgentLoop` を駆動し、完了テキストを `ResearchCitationGate` に掛けて是正リトライを行う
-- **出典検証ゲート** — `ResearchCitationGate` が `SourceRegistry` と照合し、未フェッチ URL の引用を検出する
+- **Self-description** — ``ResearcherAgent`` builds the system prompt, the agent card and the
+  delegation blurb from one enabled-tool set, so the prompt never mentions a tool the worker lacks.
+- **Execution** — ``ResearchAgentExecutor`` drives the agent loop, checks the answer, and re-prompts
+  with the violations until they clear or the retry budget runs out.
+- **The check itself** — ``ResearchCitationGate`` matches the answer's URLs against the ledger,
+  with no network and no LLM involved.
 
 ```swift
 let registry = SourceRegistry()
@@ -24,29 +27,51 @@ let executor = ResearchAgentExecutor(
 )
 ```
 
-出典が `SourceRegistry` に記帳されていない URL、または `fetched == false` の URL を引用した回答は `maxRetries` 回まで自動是正される。合格した回答のアーティファクトには `research.references` キーで引用出典の構造化データ（`[SourceRecord]` JSON）が付く。
+### What the gate does and does not guarantee
 
-### 兄弟モジュールとの役割分担
+Every http(s) URL in an answer must resolve, after normalization, to a ledger record that was
+fetched. A URL with no record, or one that only ever appeared in search results, is a violation, and
+violations become a corrective turn for the model.
 
-このパッケージは 3 層構造で成り立つ。
+Two limits matter before you describe this as preventing hallucinated citations:
 
-**`ResearchStore`** はパッケージ最下位の台帳層だ。`SourceRegistry` actor がタスク中に観測した全 URL の記録（`SourceRecord`）を保持する。UI・LLM・ネットワークに依存せず、単独でインポートして使える。検索結果（`fetched == false`）と fetch 成功（`fetched == true`）を区別して記帳し、引用可否の判定根拠を提供する。また `URLNormalization` がトラッキングパラメータ・フラグメント・`www.` 等の表記ゆれを畳み込み、台帳キーの一意性を保証する。
+- **The last attempt is not checked.** Once the retry count reaches `maxRetries` the answer is
+  emitted as it stands, so an answer that never satisfies the gate still reaches the caller. With
+  `maxRetries: 0` the check never runs at all.
+- **Only provenance is checked, never support.** A page that was fetched can be cited for any claim,
+  including one it contradicts. The ledger stores the page text, but the gate never compares it
+  against the answer.
 
-**`ResearchAgentTools`** は Layer 1 のツール層だ。`ResearchToolKit` が `web_search` / `fetch` の 2 ツールを LLM ツールとして組み立て、取得結果を `SourceRegistry` へ記帳する。`SerperSearchProvider`（Google SERP）・`BraveSearchProvider`・`FallbackSearchProvider`（複数プロバイダーのフォールバックチェーン）・`ResilientSearchProvider`（キャッシュ・レートリミット・サーキットブレーカー付きラッパー）を提供し、`WebSearchProvider` プロトコルで独自バックエンドへの差し替えも可能だ。
+What it does rule out is a citation to a URL this task did not fetch: a URL from the model's memory,
+a plausible-looking URL it invented, or a URL it saw in a search snippet and never opened.
 
-**`ResearchAgent`**（このモジュール）は Layer 2 のエージェント層だ。`ResearchAgentExecutor` が `AgentLoop` を駆動し、`ResearchCitationGate` が `SourceRegistry` への照合で回答を検証する。`ResearcherAgent` はツール構成に応じた system prompt・AgentCard・委譲説明を組み立てる。
+A completed task carries one text artifact plus metadata: token usage under `llm.usage`, and the
+cited sources as a `[SourceRecord]` JSON array under `research.references`.
+
+### The three layers
+
+**`ResearchStore`** is the ledger, dependency-free. `SourceRegistry` records every
+observed URL and whether it was fetched; `URLNormalization` decides when two spellings mean the same
+page. Importable on its own.
+
+**`ResearchAgentTools`** is the tool layer. `ResearchToolKit` builds `web_search` and `fetch` and
+records what they observe. `SerperSearchProvider`, `BraveSearchProvider`, `FallbackSearchProvider`
+and `ResilientSearchProvider` cover the search backends, and `WebSearchProvider` lets you supply
+your own.
+
+**`ResearchAgent`** — this module — runs the loop and applies the check.
 
 ## Topics
 
-### 入門
+### Getting started
 
 - <doc:GettingStarted>
 
-### エージェント組立
+### Building the worker
 
 - ``ResearcherAgent``
 - ``ResearchAgentExecutor``
 
-### 出典検証
+### Checking citations
 
 - ``ResearchCitationGate``

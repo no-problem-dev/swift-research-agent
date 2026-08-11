@@ -64,8 +64,8 @@ struct SourceRegistryTests {
         let references = await registry.references(citedURLs: [
             "https://example.com/a",
             "https://example.com/b",
-            "https://www.example.com/a/",  // a の表記ゆれ（重複）
-            "https://example.com/unknown",  // 未観測
+            "https://www.example.com/a/",  // same page as a, spelled differently
+            "https://example.com/unknown",  // never observed
         ])
         #expect(references.map(\.title) == ["A", "B"])
     }
