@@ -77,7 +77,7 @@ Web 調査ツールと検索プロバイダーを提供する。SourceRegistry �
 `Package.swift` の `dependencies` に追加:
 
 ```swift
-.package(url: "https://github.com/no-problem-dev/swift-research-agent.git", from: "0.1.1")
+.package(url: "https://github.com/no-problem-dev/swift-research-agent.git", .upToNextMinor(from: "0.1.0"))
 ```
 
 使用するターゲットに追加:

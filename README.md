@@ -78,7 +78,7 @@ Agent assembly and citation-validation logic.
 Add to `Package.swift` dependencies:
 
 ```swift
-.package(url: "https://github.com/no-problem-dev/swift-research-agent.git", from: "0.1.1")
+.package(url: "https://github.com/no-problem-dev/swift-research-agent.git", .upToNextMinor(from: "0.1.0"))
 ```
 
 Add to your target:
