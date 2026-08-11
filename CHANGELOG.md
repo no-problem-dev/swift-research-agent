@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-11
+
 ### Fixed
 
 - **The citation gate never checked the final attempt.** Validation was

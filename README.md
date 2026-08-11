@@ -96,7 +96,7 @@ the source ledger the gate reads.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/no-problem-dev/swift-research-agent.git", .upToNextMinor(from: "0.1.0"))
+    .package(url: "https://github.com/no-problem-dev/swift-research-agent.git", .upToNextMinor(from: "0.2.0"))
 ]
 ```
 
