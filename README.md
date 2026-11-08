@@ -81,14 +81,14 @@ if !issues.isEmpty {
 
 ## Documentation
 
-[**ResearchAgent**](https://no-problem-dev.github.io/swift-research-agent/documentation/researchagent/) —
+[**ResearchAgent**](Sources/ResearchAgent/Documentation.docc) —
 assembling the agent, the citation gate and the retry loop, including
-[Getting Started](https://no-problem-dev.github.io/swift-research-agent/documentation/researchagent/gettingstarted/).
+[Getting Started](Sources/ResearchAgent/Documentation.docc/GettingStarted.md).
 
-[**ResearchAgentTools**](https://no-problem-dev.github.io/swift-research-agent/documentation/researchagenttools/) —
+[**ResearchAgentTools**](Sources/ResearchAgentTools/Documentation.docc) —
 the tools, the search providers, and what happens when one fails.
 
-[**ResearchStore**](https://no-problem-dev.github.io/swift-research-agent/documentation/researchstore/) —
+[**ResearchStore**](Sources/ResearchStore/Documentation.docc) —
 the source ledger the gate reads.
 
 ## Installation

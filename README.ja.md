@@ -78,14 +78,14 @@ if !issues.isEmpty {
 
 ## ドキュメント
 
-[**ResearchAgent**](https://no-problem-dev.github.io/swift-research-agent/documentation/researchagent/) —
+[**ResearchAgent**](Sources/ResearchAgent/Documentation.docc) —
 エージェントの組み立て、引用ゲート、再試行ループ。
-[Getting Started](https://no-problem-dev.github.io/swift-research-agent/documentation/researchagent/gettingstarted/) を含む。
+[Getting Started](Sources/ResearchAgent/Documentation.docc/GettingStarted.md) を含む。
 
-[**ResearchAgentTools**](https://no-problem-dev.github.io/swift-research-agent/documentation/researchagenttools/) —
+[**ResearchAgentTools**](Sources/ResearchAgentTools/Documentation.docc) —
 ツール、検索プロバイダ、失敗したときに何が起きるか。
 
-[**ResearchStore**](https://no-problem-dev.github.io/swift-research-agent/documentation/researchstore/) —
+[**ResearchStore**](Sources/ResearchStore/Documentation.docc) —
 ゲートが読む出典台帳。
 
 ## インストール
